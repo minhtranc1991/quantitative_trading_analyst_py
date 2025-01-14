@@ -1,206 +1,192 @@
 import os
-from dotenv import load_dotenv, find_dotenv
 import time
 import hmac
 from hashlib import sha256
 import requests
 import pandas as pd
-from sqlalchemy import create_engine
-from sqlalchemy.sql import text
+from datetime import datetime
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from dotenv import load_dotenv
 
-# --- Utility Functions ---
-def test_mysql_connection(db_config):
-    """Test MySQL database connection."""
-    try:
-        engine = create_engine(
-            f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}/{db_config['database']}"
-        )
-        with engine.connect() as connection:
-            print("Connection to MySQL successful!")
-    except Exception as e:
-        print(f"Error connecting to MySQL: {e}")
-
-def get_sign(api_secret, payload):
-    """Generate HMAC SHA256 signature."""
-    signature = hmac.new(api_secret.encode("utf-8"), payload.encode("utf-8"), digestmod=sha256).hexdigest()
-    return signature
-
-def send_request(method, path, query_params):
-    """Send signed API request."""
-    try:
-        signature = get_sign(SECRET_KEY, query_params)
-        url = f"{API_URL}{path}?{query_params}&signature={signature}"
-        headers = {'X-BX-APIKEY': API_KEY}
-        response = requests.request(method, url, headers=headers)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        print(f"Request failed: {e}")
-        return {"error": str(e)}
-
-def fetch_market_data(symbol, interval="1m", limit=1440):
-    try:
-        end_time = int(time.time() * 1000)
-        start_time = end_time - limit * 60 * 1000
-        query = f"symbol={symbol}&interval={interval}&limit={limit}&startTime={start_time}&endTime={end_time}"
-        response = send_request("GET", "/openApi/swap/v3/quote/klines", query)
-        #print(f"API response for {symbol}: {response}")
-
-        if "data" in response and response["data"]:
-            df = pd.DataFrame(response["data"], columns=["time", "open", "high", "low", "close", "volume"])
-            df["time"] = pd.to_datetime(df["time"], unit="ms")
-            df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
-            #print(f"Fetched {df.shape[0]} rows for {symbol}.")
-            return df
-        else:
-            print(f"No data returned for symbol {symbol}.")
-    except Exception as e:
-        print(f"Error fetching data for {symbol}: {e}")
-    return pd.DataFrame()
-
-def update_pnl(df):
-    """Update PnL percentage using close prices of consecutive rows."""
-    if not df.empty:
-        # Loại bỏ dữ liệu trùng lặp
-        df = df.drop_duplicates(subset=["time"], keep="last")
-        # Sắp xếp lại theo thời gian
-        df = df.sort_values(by="time")
-        # Tính PnL dựa trên sự thay đổi của close
-        df["pnl_percentage"] = df["close"].diff() / df["close"].shift(1) * 100
-        # Xử lý giá trị NaN
-        df["pnl_percentage"] = df["pnl_percentage"].fillna(0)
-        #print(df)
-    return df
-
-from sqlalchemy import create_engine
-from sqlalchemy.sql import text
-import pandas as pd
-
-from sqlalchemy import create_engine
-from sqlalchemy.sql import text
-import pandas as pd
-
-def save_to_mysql(df, symbol, db_config):
-    """
-    Save DataFrame to a MySQL table. Handles table creation, duplicate removal, and row limit enforcement.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing data to save. Must include a 'time' column in datetime format.
-        symbol (str): Symbol name for the table (e.g., "BTC-USDT").
-        db_config (dict): MySQL configuration (host, user, password, database).
-
-    Returns:
-        None
-    """
-    try:
-        # Check if DataFrame is empty
-        if df.empty:
-            print(f"No data to save for {symbol}.")
-            return
-
-        # Ensure 'time' column is present and in datetime format
-        if "time" not in df.columns:
-            raise ValueError("DataFrame must contain a 'time' column.")
-        if not pd.api.types.is_datetime64_any_dtype(df["time"]):
-            df["time"] = pd.to_datetime(df["time"])
-            print("Converted 'time' column to datetime.")
-
-        # Create database engine
-        engine = create_engine(
-            f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}/{db_config['database']}"
-        )
-        table_name = symbol.replace("-", "_").lower()
-
-        with engine.connect() as connection:
-            # Step 1: Create table if it doesn't exist
-            connection.execute(text(f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
-                    time DATETIME PRIMARY KEY,
-                    open FLOAT,
-                    high FLOAT,
-                    low FLOAT,
-                    close FLOAT,
-                    volume FLOAT,
-                    pnl_percentage FLOAT
-                )
-            """))
-            #print(f"Table {table_name} exists or created.")
-
-            # Step 2: Fetch existing times to avoid duplicates
-            existing_times_query = f"SELECT time FROM {table_name}"
-            try:
-                existing_times = pd.read_sql(existing_times_query, con=connection)
-                existing_times["time"] = pd.to_datetime(existing_times["time"])
-                #print(f"Existing times fetched: {existing_times.shape[0]} rows.")
-                # Remove rows already present in the database
-                df = df[~df["time"].isin(existing_times["time"])]
-            except Exception as e:
-                print(f"No existing times fetched for {table_name}: {e}")
-
-            #print(f"New rows to insert: {df.shape[0]} rows.")
-
-            # Step 3: Insert new rows if any
-            if not df.empty:
-                df.to_sql(table_name, con=connection, if_exists="append", index=False)
-                #print(f"Inserted {df.shape[0]} new rows into {table_name}.")
-            else:
-                print(f"No new rows to insert for {symbol}.")
-
-            # Step 4: Enforce row limit (max 1440 rows)
-            row_count_query = f"SELECT COUNT(*) FROM {table_name}"
-            result = connection.execute(text(row_count_query)).fetchone()
-            row_count = result[0] if result else 0
-            #print(f"Row count in {table_name}: {row_count}.")
-
-            if row_count > 1440:
-                delete_count = row_count - 1440
-                connection.execute(text(f"""
-                    DELETE FROM {table_name}
-                    WHERE time IN (
-                        SELECT time FROM (
-                            SELECT time FROM {table_name} ORDER BY time ASC LIMIT {delete_count}
-                        ) AS subquery
-                    )
-                """))
-                print(f"Deleted {delete_count} oldest rows from {table_name}.")
-    except Exception as e:
-        print(f"Error saving data to MySQL for {symbol}: {e}")
-
-
-
-# --- Main Execution ---
-if __name__ == "__main__":
-    # Load configuration from .env file
-    load_dotenv(dotenv_path="D:/Python/quantitative_trading_analyst_py/LASSO-model/config.env")
-
-    # --- Configuration ---
-    API_URL = os.getenv("API_URL")
-    API_KEY = os.getenv("API_KEY")
-    SECRET_KEY = os.getenv("SECRET_KEY")
-
-    DB_CONFIG = {
+# --- Configuration Management ---
+def load_config(config_path):
+    """Load API and database configuration from .env file."""
+    load_dotenv(dotenv_path=config_path)
+    api_config = {
+        "url": os.getenv("API_URL"),
+        "key": os.getenv("API_KEY"),
+        "secret": os.getenv("SECRET_KEY"),
+    }
+    db_config = {
         "host": os.getenv("DB_HOST"),
         "user": os.getenv("DB_USER"),
         "password": os.getenv("DB_PASSWORD"),
         "database": os.getenv("DB_NAME"),
     }
+    return api_config, db_config
 
-    SYMBOLS = ["BTC-USDT", "ETH-USDT", "BNB-USDT", "XRP-USDT", "SOL-USDT"]
+# --- Database Management ---
+def create_database_engine(db_config):
+    """Create a database engine for MySQL."""
+    return create_engine(
+        f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}/{db_config['database']}"
+    )
 
-    if not all([API_URL, API_KEY, SECRET_KEY]):
-        print("API configuration is missing!")
-    elif not all(DB_CONFIG.values()):
-        print("Database configuration is missing!")
+def test_database_connection(engine):
+    """Test database connection, create a test table, and log verification."""
+    try:
+        with engine.connect() as connection:
+            # Tạo bảng kiểm tra
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS test_connection (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    test_message VARCHAR(255),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+            print("Test table created successfully.")
+
+            # Thêm dữ liệu vào bảng kiểm tra
+            connection.execute(text("""
+                INSERT INTO test_connection (test_message)
+                VALUES ('Database connection test successful.')
+            """))
+            print("Inserted test data successfully.")
+
+            # Đọc dữ liệu từ bảng kiểm tra
+            result = connection.execute(text("SELECT * FROM test_connection"))
+            rows = result.fetchall()
+            if rows:
+                print("Read test data successfully. Log:")
+                for row in rows:
+                    print(row)
+            else:
+                print("No test data found.")
+
+            # Xóa bảng kiểm tra
+            connection.execute(text("DROP TABLE test_connection"))
+            print("Test table dropped successfully. Database connection verified!")
+    except Exception as e:
+        print(f"Database connection test failed: {e}")
+
+# --- API Management ---
+def generate_signature(api_secret, payload):
+    """Generate HMAC SHA256 signature."""
+    return hmac.new(api_secret.encode("utf-8"), payload.encode("utf-8"), digestmod=sha256).hexdigest()
+
+def send_api_request(api_config, method, path, query_params):
+    """Send a signed API request."""
+    try:
+        signature = generate_signature(api_config["secret"], query_params)
+        url = f"{api_config['url']}{path}?{query_params}&signature={signature}"
+        headers = {'X-BX-APIKEY': api_config['key']}
+        response = requests.request(method, url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"API request failed: {e}")
+        return {"error": str(e)}
+
+# --- Data Processing ---
+def process_market_data(response_data):
+    """Process raw market data into a DataFrame."""
+    if "data" in response_data and response_data["data"]:
+        df = pd.DataFrame(response_data["data"], columns=["time", "open", "high", "low", "close", "volume"])
+        df["time"] = pd.to_datetime(df["time"], unit="ms")
+        df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
+        return df
     else:
-        # Test database connection
-        test_mysql_connection(DB_CONFIG)
+        print("No market data returned.")
+        return pd.DataFrame()
 
-        # Fetch and save data every minute
-        while True:
-            for symbol in SYMBOLS:
-                df = fetch_market_data(symbol)
+def calculate_pnl(df):
+    """Calculate PnL percentage."""
+    if not df.empty:
+        df = df.drop_duplicates(subset=["time"]).sort_values(by="time")
+        df["pnl_percentage"] = df["close"].pct_change() * 100
+        df["pnl_percentage"] = df["pnl_percentage"].fillna(0)
+    return df
+
+def save_dataframe_to_mysql(df, symbol, session):
+    """Save DataFrame to MySQL, managing duplicates and row limits."""
+    table_name = symbol.replace("-", "_").lower()
+    if df.empty:
+        print(f"No data to save for {symbol}.")
+        return
+
+    try:
+        # Create table if not exists
+        session.execute(text(f"""
+            CREATE TABLE IF NOT EXISTS {table_name} (
+                time DATETIME PRIMARY KEY,
+                open FLOAT, high FLOAT, low FLOAT, close FLOAT,
+                volume FLOAT, pnl_percentage FLOAT
+            )
+        """))
+        session.commit()
+
+        # Get existing timestamps
+        existing_times = session.execute(text(f"SELECT time FROM {table_name}")).fetchall()
+        existing_times = {row[0] for row in existing_times}
+
+        # Filter new data
+        df = df[~df["time"].isin(existing_times)]
+
+        if not df.empty:
+            #print(df.head())
+            #print(df.dtypes)
+            df.to_sql(table_name, con=session.bind, if_exists="append", index=False)
+            print(f"Data inserted successfully into table '{table_name}' at {datetime.now()}.")
+
+        # Enforce row limit
+        row_count = session.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+        if row_count > 1440:
+            delete_count = row_count - 1440
+            session.execute(text(f"""
+                DELETE FROM {table_name}
+                WHERE time IN (
+                    SELECT time FROM (
+                        SELECT time FROM {table_name} ORDER BY time ASC LIMIT {delete_count}
+                    ) AS subquery
+                )
+            """))
+            session.commit()
+            print(f"Deleted {delete_count} oldest rows from {table_name}.")
+
+    except Exception as e:
+        session.rollback()
+        print(f"Error inserting data into table '{table_name}': {e}")
+
+# --- Main Execution ---
+def main(symbols):
+    config_path = "D:/Python/quantitative_trading_analyst_py/LASSO-model/config.env"
+    api_config, db_config = load_config(config_path)
+
+    if not all(api_config.values()) or not all(db_config.values()):
+        print("Configuration is incomplete!")
+        return
+
+    engine = create_database_engine(db_config)
+    #test_database_connection(engine)
+    Session = sessionmaker(bind=engine)
+
+    while True:
+        with Session() as session:
+            for symbol in symbols:
+                limit = 1440
+                end_time = int(time.time() * 1000)
+                start_time = end_time - limit * 60 * 1000  # 1440 minutes
+                query = f"symbol={symbol}&interval=1m&limit={limit}&startTime={start_time}&endTime={end_time}"
+                response = send_api_request(api_config, "GET", "/openApi/swap/v3/quote/klines", query)
+                df = process_market_data(response)
                 if not df.empty:
-                    df = update_pnl(df)
-                    save_to_mysql(df, symbol, DB_CONFIG)
-            print("Waiting for the next minute...")
-            time.sleep((60 - time.localtime().tm_sec) % 60)
+                    df = calculate_pnl(df)
+                    save_dataframe_to_mysql(df, symbol, session)
+        print("Waiting for the next minute...")
+        time.sleep((60 - time.localtime().tm_sec) % 60)
+
+if __name__ == "__main__":
+
+    symbols = ["BTC-USDT", "ETH-USDT", "BNB-USDT", "XRP-USDT", "SOL-USDT"]
+    main(symbols)
