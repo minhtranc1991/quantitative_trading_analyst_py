@@ -9,6 +9,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker
 
 APIURL = "https://open-api.bingx.com"
+APIKEY = ""
+SECRETKEY = ""
 
 # --- API Management ---
 def get_sign(api_secret, payload):
@@ -16,9 +18,9 @@ def get_sign(api_secret, payload):
     return hmac.new(api_secret.encode("utf-8"), payload.encode("utf-8"), digestmod=sha256).hexdigest()
 
 def send_api_request(method, path, urlpa, payload=None):
-    url = "%s%s?%s&signature=%s" % (APIURL, path, urlpa, get_sign(config.api_config['key'], urlpa))
+    url = "%s%s?%s&signature=%s" % (APIURL, path, urlpa, get_sign(SECRETKEY, urlpa))
     headers = {
-        'X-BX-APIKEY': config.api_config['key'],
+        'X-BX-APIKEY': APIKEY,
     }
     response = requests.request(method, url, headers=headers, data=payload)
     return response.json()
@@ -103,12 +105,6 @@ def save_dataframe_to_mysql(df, symbol, session):
 
 # --- Main Execution ---
 def main(symbols):
-    api_config, db_config = config.load_config()
-
-    if not all(api_config.values()):
-        print("Configuration is incomplete!")
-        return
-
     engine = config.create_database_engine()
     #test_database_connection(engine)
     Session = sessionmaker(bind=engine)
