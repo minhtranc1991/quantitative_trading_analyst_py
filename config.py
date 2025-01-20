@@ -2,10 +2,9 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
-def load_config(config_path="D:\Python\quantitative_trading_analyst_py\LASSO-model\config.env"):
+def load_config(config_path="config.env"):
     """Load database configuration from .env file."""
     """Load API and database configuration from .env file."""
-    os.environ.clear()
     load_dotenv(dotenv_path=config_path)
     api_config = {
         "url": os.getenv("API_URL"),
@@ -17,14 +16,20 @@ def load_config(config_path="D:\Python\quantitative_trading_analyst_py\LASSO-mod
         "user": os.getenv("DB_USER"),
         "password": os.getenv("DB_PASSWORD"),
         "database": os.getenv("DB_NAME"),
+        "port": int(os.getenv("DB_PORT", 3306))
     }
     return api_config, db_config
 
 # --- Database Management ---
 def create_database_engine():
     """Create a database engine for MySQL."""
+    host = db_config['host']
+    port = db_config.get('port', 3306)
+    if host == 'localhost':
+        host = f"{host}:{port}"
+    
     return create_engine(
-        f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{db_config['host']}/{db_config['database']}"
+        f"mysql+pymysql://{db_config['user']}:{db_config['password']}@{host}/{db_config['database']}"
     )
 
 def test_database_connection(engine):
@@ -68,3 +73,4 @@ api_config, db_config = load_config()
 
 #print("API Configuration:", api_config)
 #print("Database Configuration:", db_config)
+#test_database_connection(create_database_engine())
