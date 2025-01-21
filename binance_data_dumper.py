@@ -10,3 +10,4 @@ data_dumper = BinanceDataDumper(
 
 data_dumper = data_dumper.get_list_all_trading_pairs()
 print(data_dumper)
+print(data_dumper.len())

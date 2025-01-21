@@ -2,3 +2,4 @@
 /spot
 *.env
 combined_ticker_data_usdt.csv
+/data
