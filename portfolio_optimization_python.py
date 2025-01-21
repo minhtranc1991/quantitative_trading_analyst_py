@@ -1,0 +1,150 @@
+import pandas as pd
+import yfinance as yf
+from datetime import date, timedelta
+from pypfopt import EfficientFrontier
+from pypfopt import risk_models
+from pypfopt.risk_models import CovarianceShrinkage
+from pypfopt import expected_returns
+import matplotlib.pyplot as plt
+
+def download_data(basket, start_date, end_date):
+    data = {}
+    for ticker in basket:
+        df_ticker = yf.download(ticker, start=start_date, end=end_date)['Close']
+        data[ticker] = df_ticker
+    df = pd.concat(data, axis=1).ffill().bfill().fillna(0)
+    if df.isnull().values.any():
+        raise ValueError("Data contains NaN values even after filling!")
+    return df
+
+def filter_top_assets(df, max_assets, criterion="sharpe", required_assets=None):
+    # Tính lợi suất kỳ vọng
+    mu = expected_returns.mean_historical_return(df)
+    # Tính độ lệch chuẩn từ lợi suất hàng ngày
+    daily_returns = df.pct_change().dropna()
+    if daily_returns.isna().any().any():
+        raise ValueError("The data after calculation contains NaN. Please check the input data.")
+    
+    std_devs = daily_returns.std()
+
+    if criterion == "sharpe":
+        sharpe_ratios = mu / std_devs  # Tính Sharpe Ratio
+        top_assets = sharpe_ratios.nlargest(max_assets).index.tolist()  # Lấy top tài sản theo Sharpe Ratio
+    elif criterion == "volatility":
+        top_assets = std_devs.nsmallest(max_assets).index.tolist()  # Lấy top tài sản có độ biến động thấp nhất
+    else:
+        raise ValueError("Criterion not supported! Use 'sharpe' or 'volatility'.")
+
+    # Đảm bảo các tài sản bắt buộc luôn có mặt
+    if required_assets is not None:
+        top_assets = list(set(top_assets).union(required_assets))  # Hợp nhất với các tài sản bắt buộc
+        if len(top_assets) > max_assets:
+            top_assets = top_assets[:max_assets]  # Giữ đúng số lượng tài sản tối đa
+
+    top_assets_cleaned = [
+        asset[1] if isinstance(asset, tuple) else asset
+        for asset in top_assets
+    ]
+    top_assets_cleaned = list(set(top_assets_cleaned))
+
+    # Xử lý danh sách ticker trả về (nếu cần)
+    print(top_assets_cleaned)  # In danh sách ticker
+    return df[top_assets_cleaned]
+
+def optimize_portfolio(df_filtered, target_return=0.2):
+    mu = expected_returns.mean_historical_return(df_filtered)
+    S = CovarianceShrinkage(df_filtered).ledoit_wolf()
+
+    # 1. Portfolio có tỷ lệ Sharpe cao nhất
+    ef_sharpe = EfficientFrontier(mu, S)
+    ef_sharpe.max_sharpe()
+    weights_sharpe = ef_sharpe.clean_weights()
+    performance_sharpe = ef_sharpe.portfolio_performance(verbose=False)
+
+    # 2. Portfolio có độ biến động thấp nhất
+    ef_volatility = EfficientFrontier(mu, S)
+    ef_volatility.min_volatility()
+    weights_volatility = ef_volatility.clean_weights()
+    performance_volatility = ef_volatility.portfolio_performance(verbose=False)
+
+    # 3. Portfolio tối ưu (giữa rủi ro và lợi suất)
+    ef_optimal = EfficientFrontier(mu, S)
+    ef_optimal.efficient_return(target_return=target_return)
+    weights_optimal = ef_optimal.clean_weights()
+    performance_optimal = ef_optimal.portfolio_performance(verbose=False)
+
+    return {
+        "sharpe": (weights_sharpe, performance_sharpe),
+        "volatility": (weights_volatility, performance_volatility),
+        "optimal": (weights_optimal, performance_optimal),
+    }
+
+def plot_portfolio(weights, title):
+    filtered_weights = {key: weight for key, weight in weights.items() if weight > 0}
+    assets = list(filtered_weights.keys())
+    weights = list(filtered_weights.values())
+
+    plt.figure(figsize=(8, 8))
+    plt.pie(weights, labels=assets, autopct='%1.1f%%', startangle=140, colors=plt.cm.tab20.colors)
+    plt.title(title)
+    plt.show()
+
+def main(basket, start_date, end_date, max_assets, target_return, criterion, required_assets=None):
+    # Download data
+    df = download_data(basket, start_date, end_date)
+
+    # Filter top assets
+    df_filtered = filter_top_assets(df, max_assets, criterion, required_assets)
+
+    # Optimize portfolio
+    results = optimize_portfolio(df_filtered, target_return=target_return)
+
+    # Create Portfolio Comparison DataFrame
+    portfolio_data = {
+        "Portfolio Type": ["Max Sharpe", "Min Volatility", "Optimal Portfolio"],
+        "Return": [
+            results["sharpe"][1][0],
+            results["volatility"][1][0],
+            results["optimal"][1][0],
+        ],
+        "Volatility": [
+            results["sharpe"][1][1],
+            results["volatility"][1][1],
+            results["optimal"][1][1],
+        ],
+        "Sharpe Ratio": [
+            results["sharpe"][1][2],
+            results["volatility"][1][2],
+            results["optimal"][1][2],
+        ],
+    }
+    portfolio_df = pd.DataFrame(portfolio_data)
+
+    for column in ["Return", "Volatility"]:
+        portfolio_df[column] = portfolio_df[column].apply(lambda x: f"{x * 100:.2f}%")
+
+    print("Portfolio Comparison:\n", portfolio_df)
+
+    # Display results for each portfolio type
+    for portfolio_type, (weights, performance) in results.items():
+        print(f"\n{portfolio_type.capitalize()} Portfolio:")
+        print("Weights:", weights)
+        print("Performance: Return = {:.2f}%, Volatility = {:.2f}%, Sharpe Ratio = {:.2f}".format(
+            performance[0] * 100, performance[1] * 100, performance[2]
+        ))
+        plot_portfolio(weights, f"{portfolio_type.capitalize()} Portfolio Allocation")
+
+# Example Usage
+if __name__ == "__main__":
+    basket = ["GC=F", "BTC-USD", "ETH-USD", "ONUS-USD", "XRP-USD", "SOL-USD", "BNB-USD", "DOGE-USD", "ADA-USD", "TRX-USD",
+          "AVAX-USD", "LINK-USD", "XLM-USD", "HBAR-USD", "SUI20947-USD", "TON11419-USD", "SHIB-USD", "DOT-USD", "LTC-USD", "BCH-USD",
+          "BGB-USD", "UNI-USD", "HYPE-USD", "ETC-USD", "PEPE24478-USD", "NEAR-USD", "AAVE-USD", "APT-USD", "ICP-USD", "ONDO-USD"]
+    #start_date = date.today() + timedelta(days=-180)
+    start_date = "2021-11-10"
+    end_date = date.today().strftime("%Y-%m-%d")
+    max_assets = 5
+    target_return = 0.2
+    criterion = "sharpe"  # or "volatility"
+    required_assets = ['BTC-USD', 'GC=F']
+
+    main(basket, start_date, end_date, max_assets, target_return, criterion, required_assets)
