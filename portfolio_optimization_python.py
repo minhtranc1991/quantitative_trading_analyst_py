@@ -1,10 +1,8 @@
 import pandas as pd
 import yfinance as yf
 from datetime import date, timedelta
-from pypfopt import EfficientFrontier
-from pypfopt import risk_models
+from pypfopt import EfficientFrontier, expected_returns, objective_functions
 from pypfopt.risk_models import CovarianceShrinkage
-from pypfopt import expected_returns
 import matplotlib.pyplot as plt
 
 def download_data(basket, start_date, end_date):
@@ -29,6 +27,8 @@ def filter_top_assets(df, max_assets, criterion="sharpe", required_assets=None):
 
     if criterion == "sharpe":
         sharpe_ratios = mu / std_devs  # Tính Sharpe Ratio
+        if isinstance(sharpe_ratios.index, pd.MultiIndex):
+            sharpe_ratios.index = sharpe_ratios.index.map(lambda x: x[0])
         top_assets = sharpe_ratios.nlargest(max_assets).index.tolist()  # Lấy top tài sản theo Sharpe Ratio
     elif criterion == "volatility":
         top_assets = std_devs.nsmallest(max_assets).index.tolist()  # Lấy top tài sản có độ biến động thấp nhất
@@ -37,38 +37,37 @@ def filter_top_assets(df, max_assets, criterion="sharpe", required_assets=None):
 
     # Đảm bảo các tài sản bắt buộc luôn có mặt
     if required_assets is not None:
-        top_assets = list(set(top_assets).union(required_assets))  # Hợp nhất với các tài sản bắt buộc
-        if len(top_assets) > max_assets:
-            top_assets = top_assets[:max_assets]  # Giữ đúng số lượng tài sản tối đa
+        # Loại bỏ các tài sản trong required_assets khỏi top_assets
+        top_assets = [asset for asset in top_assets if asset not in required_assets]
+        # Thêm các tài sản bắt buộc vào đầu danh sách
+        top_assets = required_assets + top_assets
+        # Giữ đúng số lượng tài sản tối đa
+        top_assets = top_assets[:max_assets]
 
-    top_assets_cleaned = [
-        asset[1] if isinstance(asset, tuple) else asset
-        for asset in top_assets
-    ]
-    top_assets_cleaned = list(set(top_assets_cleaned))
+    print(top_assets)  # In danh sách ticker
+    return df[top_assets]
 
-    # Xử lý danh sách ticker trả về (nếu cần)
-    print(top_assets_cleaned)  # In danh sách ticker
-    return df[top_assets_cleaned]
-
-def optimize_portfolio(df_filtered, target_return=0.2):
+def optimize_portfolio(df_filtered, target_return=0.2, min_weight=0.05): 
     mu = expected_returns.mean_historical_return(df_filtered)
     S = CovarianceShrinkage(df_filtered).ledoit_wolf()
 
     # 1. Portfolio có tỷ lệ Sharpe cao nhất
     ef_sharpe = EfficientFrontier(mu, S)
+    ef_sharpe.add_constraint(lambda w: w >= min_weight)  # Ràng buộc tối thiểu
     ef_sharpe.max_sharpe()
     weights_sharpe = ef_sharpe.clean_weights()
     performance_sharpe = ef_sharpe.portfolio_performance(verbose=False)
 
     # 2. Portfolio có độ biến động thấp nhất
     ef_volatility = EfficientFrontier(mu, S)
+    ef_volatility.add_constraint(lambda w: w >= min_weight)  # Ràng buộc tối thiểu
     ef_volatility.min_volatility()
     weights_volatility = ef_volatility.clean_weights()
     performance_volatility = ef_volatility.portfolio_performance(verbose=False)
 
     # 3. Portfolio tối ưu (giữa rủi ro và lợi suất)
     ef_optimal = EfficientFrontier(mu, S)
+    ef_optimal.add_constraint(lambda w: w >= min_weight)  # Ràng buộc tối thiểu
     ef_optimal.efficient_return(target_return=target_return)
     weights_optimal = ef_optimal.clean_weights()
     performance_optimal = ef_optimal.portfolio_performance(verbose=False)
@@ -89,7 +88,7 @@ def plot_portfolio(weights, title):
     plt.title(title)
     plt.show()
 
-def main(basket, start_date, end_date, max_assets, target_return, criterion, required_assets=None):
+def main(basket, start_date, end_date, max_assets, min_weight, target_return, criterion, required_assets=None):
     # Download data
     df = download_data(basket, start_date, end_date)
 
@@ -97,7 +96,7 @@ def main(basket, start_date, end_date, max_assets, target_return, criterion, req
     df_filtered = filter_top_assets(df, max_assets, criterion, required_assets)
 
     # Optimize portfolio
-    results = optimize_portfolio(df_filtered, target_return=target_return)
+    results = optimize_portfolio(df_filtered, target_return, min_weight)
 
     # Create Portfolio Comparison DataFrame
     portfolio_data = {
@@ -138,13 +137,14 @@ def main(basket, start_date, end_date, max_assets, target_return, criterion, req
 if __name__ == "__main__":
     basket = ["GC=F", "BTC-USD", "ETH-USD", "ONUS-USD", "XRP-USD", "SOL-USD", "BNB-USD", "DOGE-USD", "ADA-USD", "TRX-USD",
           "AVAX-USD", "LINK-USD", "XLM-USD", "HBAR-USD", "SUI20947-USD", "TON11419-USD", "SHIB-USD", "DOT-USD", "LTC-USD", "BCH-USD",
-          "BGB-USD", "UNI-USD", "HYPE-USD", "ETC-USD", "PEPE24478-USD", "NEAR-USD", "AAVE-USD", "APT-USD", "ICP-USD", "ONDO-USD"]
-    #start_date = date.today() + timedelta(days=-180)
-    start_date = "2021-11-10"
+          "VET-USD", "UNI-USD", "HYPE-USD", "ETC-USD", "PEPE24478-USD", "NEAR-USD", "AAVE-USD", "APT-USD", "ICP-USD", "ONDO-USD"]
+    start_date = date.today() + timedelta(days=-365)
+    #start_date = "2021-11-10"
     end_date = date.today().strftime("%Y-%m-%d")
-    max_assets = 5
+    max_assets = 4
+    min_weight = 0.01
     target_return = 0.2
-    criterion = "sharpe"  # or "volatility"
-    required_assets = ['BTC-USD', 'GC=F']
+    criterion = "sharpe"  # "sharpe" or "volatility"
+    required_assets = ['BTC-USD', 'GC=F', 'ONUS-USD']
 
-    main(basket, start_date, end_date, max_assets, target_return, criterion, required_assets)
+    main(basket, start_date, end_date, max_assets, min_weight, target_return, criterion, required_assets)
