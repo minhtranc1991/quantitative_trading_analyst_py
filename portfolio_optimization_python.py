@@ -1,16 +1,17 @@
 import pandas as pd
 import yfinance as yf
+import concurrent.futures
+import matplotlib.pyplot as plt
 from datetime import date, timedelta
 from pypfopt import EfficientFrontier, expected_returns, objective_functions
 from pypfopt.risk_models import CovarianceShrinkage
-import matplotlib.pyplot as plt
 
 def download_data(basket, start_date, end_date):
     data = {}
     for ticker in basket:
         df_ticker = yf.download(ticker, start=start_date, end=end_date)['Close']
         data[ticker] = df_ticker
-    df = pd.concat(data, axis=1).ffill().bfill().fillna(0)
+    df = pd.concat(data, axis=1).ffill().fillna(0)
     if df.isnull().values.any():
         raise ValueError("Data contains NaN values even after filling!")
     return df
@@ -31,6 +32,7 @@ def filter_top_assets(df, max_assets, criterion="sharpe", required_assets=None):
             sharpe_ratios.index = sharpe_ratios.index.map(lambda x: x[0])
         top_assets = sharpe_ratios.nlargest(max_assets).index.tolist()  # Lấy top tài sản theo Sharpe Ratio
     elif criterion == "volatility":
+        std_devs.index = std_devs.index.map(lambda x: x[0])
         top_assets = std_devs.nsmallest(max_assets).index.tolist()  # Lấy top tài sản có độ biến động thấp nhất
     else:
         raise ValueError("Criterion not supported! Use 'sharpe' or 'volatility'.")
@@ -141,8 +143,8 @@ if __name__ == "__main__":
     start_date = date.today() + timedelta(days=-365)
     #start_date = "2021-11-10"
     end_date = date.today().strftime("%Y-%m-%d")
-    max_assets = 4
-    min_weight = 0.01
+    max_assets = 10
+    min_weight = 0.02
     target_return = 0.2
     criterion = "sharpe"  # "sharpe" or "volatility"
     required_assets = ['BTC-USD', 'GC=F', 'ONUS-USD']
