@@ -1,18 +1,15 @@
 import os
 import time
 import json
+import config 
 import pandas as pd
 import urllib.request
-import config 
+import multiprocessing
 from datetime import datetime, timedelta, date
-from sqlalchemy import Table, Column, MetaData, DateTime, Float, Integer, String, PrimaryKeyConstraint, Date, inspect
-from sqlalchemy.orm import sessionmaker
 from binance_historical_data import BinanceDataDumper
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import Table, Column, MetaData, DateTime, Float, Integer, String, PrimaryKeyConstraint, Date, inspect, insert
 
-# Khởi tạo engine và session
-engine = config.create_database_engine()
-Session = sessionmaker(bind=engine)
-session = Session()
 
 # Khai báo metadata
 metadata = MetaData()
@@ -98,30 +95,33 @@ def create_table_if_not_exists(table_name):
 
 # Hàm để lưu dữ liệu vào bảng
 def save_data_to_table(table_name, data):
-    # Chuyển đổi DataFrame thành danh sách các từ điển
     data_dict = data.to_dict(orient='records')
+    if not data_dict:
+        return
     
-    # Lấy đối tượng bảng
     table = Table(table_name, metadata, autoload_with=engine)
-    
-    # Chèn dữ liệu vào bảng
-    session.execute(table.insert(), data_dict)
-    session.commit()
+    statement = insert(table).prefix_with("IGNORE").values(data_dict)
+    session.execute(statement)
 
 # Hàm để cập nhật last_updated_date trong bảng tickers
 def update_last_updated_date(ticker, last_updated_date):
-    # Tạo một đối tượng mới hoặc cập nhật đối tượng hiện có
-    ticker_record = session.query(tickers_table).filter(tickers_table.c.ticker == ticker).first()
-    
-    if ticker_record:
-        # Nếu ticker đã tồn tại, cập nhật last_updated_date
-        ticker_record.last_updated_date = last_updated_date
+    ticker_exists = session.query(
+        session.query(tickers_table).filter_by(ticker=ticker).exists()
+    ).scalar()
+
+    if ticker_exists:
+        update_statement = tickers_table.update().where(
+            tickers_table.c.ticker == ticker
+        ).values(
+            last_updated_date=last_updated_date
+        )
     else:
-        # Nếu ticker chưa tồn tại, chèn dữ liệu mới
-        new_record = tickers_table.insert().values(ticker=ticker, last_updated_date=last_updated_date)
-        session.execute(new_record)
+        update_statement = tickers_table.insert().values(
+            ticker=ticker,
+            last_updated_date=last_updated_date
+        )
     
-    session.commit()
+    session.execute(update_statement)
 
 # Hàm để lấy tất cả các file CSV từ một thư mục
 def get_csv_files(directory):
@@ -170,6 +170,21 @@ def read_csv_file(file_path):
     
     return df
 
+def download_ticker(ticker, date_start):
+    """Hàm thực hiện tải dữ liệu cho một ticker cụ thể"""
+    data_dumper = BinanceDataDumper(
+        path_dir_where_to_dump=".",
+        asset_class="spot",
+        data_type="klines",
+        data_frequency="1h",
+    )
+    data_dumper.dump_data(
+        tickers=ticker,
+        date_start=date_start,
+        date_end=date.today(),
+        is_to_update_existing=False,
+    )
+
 # Hàm chính
 def main():
     # Lấy danh sách tất cả các tickers
@@ -178,12 +193,43 @@ def main():
     # Lọc các tickers có đuôi USDT
     tickers = filter_usdt_tickers(tickers)
     
+    tickers_update_info = []
+
+    for ticker in tickers:
+        table_name = get_table_name(ticker)
+        date_start = get_last_updated_date(table_name)
+        
+        # Nếu ticker chưa có trong bảng tickers, tìm ngày đầu tiên có dữ liệu
+        if not date_start:
+            date_start = find_first_data_date(ticker)
+        else:
+            date_start = date_start + timedelta(days=-1)
+
+        try:
+            update_last_updated_date(table_name, date_start)
+            session.commit()  # Commit duy nhất
+        except Exception as e:
+            session.rollback()  # Rollback tất cả thay đổi nếu có lỗi
+            print(f"Error occurred: {str(e)}")
+            raise
+        finally:
+            session.close()
+
+        # Lưu thông tin cập nhật của ticker vào danh sách
+        tickers_update_info.append({
+            'ticker': ticker,
+            'last_updated_date': date_start
+        })
+
+    tickers_update_info.sort(key=lambda x: x['last_updated_date'])
+    tickers = [info['ticker'] for info in tickers_update_info]
+    
     # Duyệt qua từng ticker
     for ticker in tickers:
         table_name = get_table_name(ticker)
         
         # Kiểm tra ngày cuối cùng được cập nhật
-        date_start = get_last_updated_date(ticker)
+        date_start = get_last_updated_date(table_name)
         
         # Nếu ticker chưa có trong bảng tickers, tìm ngày đầu tiên có dữ liệu
         if not date_start:
@@ -191,24 +237,26 @@ def main():
         else:
             date_start = date_start + timedelta(days=-1)
         
-        # Tải dữ liệu từ Binance
-        data_dumper = BinanceDataDumper(
-            path_dir_where_to_dump=".",
-            asset_class="spot",
-            data_type="klines",
-            data_frequency="1h",
+        # Tạo process cho mỗi lần tải
+        process = multiprocessing.Process(
+            target=download_ticker,
+            args=(ticker, date_start)
         )
-        
-        date_end = date.today()
-
-        # Gọi hàm dump_data với các tham số đã chuyển đổi
-        data_dumper.dump_data(
-            tickers=ticker,
-            date_start=date_start,
-            date_end=date_end,
-            is_to_update_existing=False,
-        )
-        
+    
+        try:
+            process.start()
+            # Chờ process hoàn thành với timeout 60s
+            process.join(timeout=60)
+            
+            if process.is_alive():
+                print(f"[Timeout] Bỏ qua {ticker} do vượt quá thời gian tải")
+                process.terminate()
+                process.join()
+                
+        except Exception as e:
+            print(f"Lỗi khi xử lý {ticker}: {str(e)}")
+            session.rollback()
+            continue
         # Đọc dữ liệu từ file
         # Đường dẫn đến hai thư mục chứa dữ liệu
         daily_files = os.path.join(os.getcwd(), f"spot/daily/klines/{ticker}/1h")
@@ -231,13 +279,24 @@ def main():
         # Tạo bảng nếu chưa tồn tại
         create_table_if_not_exists(table_name)
         
-        # Lưu dữ liệu vào bảng
-        save_data_to_table(table_name, data)
-        
-        # Cập nhật last_updated_date trong bảng tickers
-        update_last_updated_date(ticker, datetime.now())
+        try:
+            save_data_to_table(table_name, data)
+            update_last_updated_date(table_name, date_start)
+            session.commit()  # Commit duy nhất
+        except Exception as e:
+            session.rollback()  # Rollback tất cả thay đổi nếu có lỗi
+            print(f"Error occurred: {str(e)}")
+            raise
+        finally:
+            session.close()
 
 # Chạy hàm chính
 if __name__ == "__main__":
+    # Khởi tạo engine và session
+    engine = config.create_database_engine()
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
     main()
+    
     session.close()

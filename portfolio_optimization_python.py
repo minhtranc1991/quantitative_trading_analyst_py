@@ -95,10 +95,10 @@ def main(basket, start_date, end_date, max_assets, min_weight, target_return, cr
     df = download_data(basket, start_date, end_date)
 
     # Filter top assets
-    df_filtered = filter_top_assets(df, max_assets, criterion, required_assets)
+    df = filter_top_assets(df, max_assets, criterion, required_assets)
 
     # Optimize portfolio
-    results = optimize_portfolio(df_filtered, target_return, min_weight)
+    results = optimize_portfolio(df, target_return, min_weight)
 
     # Create Portfolio Comparison DataFrame
     portfolio_data = {
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     start_date = date.today() + timedelta(days=-365)
     #start_date = "2021-11-10"
     end_date = date.today().strftime("%Y-%m-%d")
-    max_assets = 10
+    max_assets = 5
     min_weight = 0.02
     target_return = 0.2
     criterion = "sharpe"  # "sharpe" or "volatility"
