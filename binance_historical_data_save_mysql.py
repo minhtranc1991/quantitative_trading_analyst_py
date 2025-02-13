@@ -125,9 +125,14 @@ def update_last_updated_date(ticker, last_updated_date):
 
 # Hàm để lấy tất cả các file CSV từ một thư mục
 def get_csv_files(directory):
-    if not os.path.exists(directory):
-        raise FileNotFoundError(f"Thư mục không tồn tại: {directory}")
-    return [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.csv')]
+    try:
+        if not os.path.exists(directory):
+            print(f"Warning: Thư mục không tồn tại: {directory}")
+            return []  # Trả về danh sách rỗng thay vì raise error
+        return [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.csv')]
+    except Exception as e:
+        print(f"Lỗi khi đọc thư mục {directory}: {str(e)}")
+        return []
 
 # Hàm để xác định đơn vị của timestamp
 def detect_timestamp_unit(timestamp):
