@@ -216,7 +216,7 @@ def main():
         except Exception as e:
             session.rollback()  # Rollback tất cả thay đổi nếu có lỗi
             print(f"Error occurred: {str(e)}")
-            raise
+            continue
         finally:
             session.close()
 
@@ -267,12 +267,14 @@ def main():
         daily_files = os.path.join(os.getcwd(), f"spot/daily/klines/{ticker}/1h")
         monthly_files = os.path.join(os.getcwd(), f"spot/monthly/klines/{ticker}/1h")
 
-        # Lấy tất cả các file CSV từ cả hai thư mục
+        # Lấy file CSV và xử lý lỗi
         daily_files = get_csv_files(daily_files)
         monthly_files = get_csv_files(monthly_files)
-
-        # Kết hợp và sắp xếp danh sách các file
         all_files = daily_files + monthly_files
+
+        if not all_files:
+            print(f"Không có file CSV nào cho {ticker}")
+            continue  # Bỏ qua ticker này
 
         # Đọc và kết hợp dữ liệu từ tất cả các file
         data = pd.concat([read_csv_file(file) for file in all_files], ignore_index=True)
@@ -286,12 +288,15 @@ def main():
         
         try:
             save_data_to_table(table_name, data)
-            update_last_updated_date(table_name, date_start)
+            update_last_updated_date(table_name, date.today())
             session.commit()  # Commit duy nhất
+        except FileNotFoundError as e:
+            print(f"Lỗi không tìm thấy file cho {ticker}: {str(e)}")
+            continue
         except Exception as e:
+            print(f"Lỗi nghiêm trọng khi xử lý {ticker}: {str(e)}")
             session.rollback()  # Rollback tất cả thay đổi nếu có lỗi
-            print(f"Error occurred: {str(e)}")
-            raise
+            continue
         finally:
             session.close()
 

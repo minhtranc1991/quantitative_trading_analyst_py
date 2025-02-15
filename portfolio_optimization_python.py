@@ -140,7 +140,7 @@ if __name__ == "__main__":
     basket = ["GC=F", "BTC-USD", "ETH-USD", "ONUS-USD", "XRP-USD", "SOL-USD", "BNB-USD", "DOGE-USD", "ADA-USD", "TRX-USD",
           "AVAX-USD", "LINK-USD", "XLM-USD", "HBAR-USD", "SUI20947-USD", "TON11419-USD", "SHIB-USD", "DOT-USD", "LTC-USD", "BCH-USD",
           "VET-USD", "UNI-USD", "HYPE-USD", "ETC-USD", "PEPE24478-USD", "NEAR-USD", "AAVE-USD", "APT-USD", "ICP-USD", "ONDO-USD"]
-    start_date = date.today() + timedelta(days=-365)
+    start_date = date.today() + timedelta(days=-364)
     #start_date = "2021-11-10"
     end_date = date.today().strftime("%Y-%m-%d")
     max_assets = 5
