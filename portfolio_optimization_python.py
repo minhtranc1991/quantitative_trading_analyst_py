@@ -128,8 +128,13 @@ def main(basket, start_date, end_date, max_assets, min_weight, target_return, cr
 
     # Display results for each portfolio type
     for portfolio_type, (weights, performance) in results.items():
+        weight = pd.DataFrame([
+          {'Token': 'GOLD' if k[0] == 'GC=F' else k[0].replace('-USD', ''), 'Allocation': f"{v*100:.2f}%"}
+          for k, v in weights.items()
+        ])
+
         print(f"\n{portfolio_type.capitalize()} Portfolio:")
-        print("Weights:", weights)
+        print("Weights:", weight)
         print("Performance: Return = {:.2f}%, Volatility = {:.2f}%, Sharpe Ratio = {:.2f}".format(
             performance[0] * 100, performance[1] * 100, performance[2]
         ))
@@ -144,7 +149,7 @@ if __name__ == "__main__":
     #start_date = "2021-11-10"
     end_date = date.today().strftime("%Y-%m-%d")
     max_assets = 5
-    min_weight = 0.02
+    min_weight = 0.05 
     target_return = 0.2
     criterion = "sharpe"  # "sharpe" or "volatility"
     required_assets = ['BTC-USD', 'GC=F', 'ONUS-USD']
