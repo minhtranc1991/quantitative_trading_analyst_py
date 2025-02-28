@@ -138,7 +138,7 @@ def main(basket, start_date, end_date, max_assets, min_weight, target_return, cr
         print("Performance: Return = {:.2f}%, Volatility = {:.2f}%, Sharpe Ratio = {:.2f}".format(
             performance[0] * 100, performance[1] * 100, performance[2]
         ))
-        plot_portfolio(weights, f"{portfolio_type.capitalize()} Portfolio Allocation")
+        #plot_portfolio(weights, f"{portfolio_type.capitalize()} Portfolio Allocation")
 
 # Example Usage
 if __name__ == "__main__":
