@@ -7,8 +7,7 @@ pl.Config.set_tbl_cols(-1)
 pl.Config.set_tbl_rows(-1)
 pl.Config.set_fmt_str_lengths(100)
 
-# --- Các hàm xử lý, tính PnL theo Average Cost với log trạng thái vị thế ---
-
+# --- Hàm tính PnL theo phương pháp Average Cost với log trạng thái vị thế ---
 def compute_pnl_average_cost_with_log(df: pl.DataFrame) -> pl.DataFrame:
     """
     Tính PnL dựa trên phương pháp trung bình giá (average cost) cho mỗi ticker.
@@ -33,7 +32,7 @@ def compute_pnl_average_cost_with_log(df: pl.DataFrame) -> pl.DataFrame:
         ticker = row["ticker"]
         is_buyer = row["isBuyer"]             # True/False
         reduce_only = row["reduceOnly_bool"]    # True/False
-        price = row["averagePrice"]                    # float
+        price = row["averagePrice"]             # float
         qty = row["filledAmount"]               # float
 
         # Nếu ticker chưa có vị thế, khởi tạo
@@ -148,20 +147,16 @@ def compute_pnl_average_cost_with_log(df: pl.DataFrame) -> pl.DataFrame:
     )
     return df
 
-# --- Xử lý tất cả các file trong thư mục ---
-
-# Lấy thư mục hiện tại và thư mục chứa file CSV
+# --- Xử lý tất cả các file trong thư mục và tổng hợp bảng lãi lỗ của các account ---
 current_dir = os.getcwd()
 folder_path = os.path.join(current_dir, "reverse-engineer-foundation")
-
-# Lấy danh sách tất cả các file CSV trong thư mục
 csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
 
 if not csv_files:
     raise FileNotFoundError(f"Không tìm thấy file CSV nào trong thư mục: {folder_path}")
 
-# Danh sách DataFrame đã tính PnL cho từng file
-df_list = []
+# Danh sách lưu kết quả cuối cùng của từng account
+account_pnl_list = []
 
 for file_path in csv_files:
     print(f"Đang xử lý file: {file_path}")
@@ -170,7 +165,7 @@ for file_path in csv_files:
     
     # Lọc chỉ các dòng có averagePrice khác None
     df = df.filter(pl.col("averagePrice").is_not_null())
-
+    
     # Trích xuất giá trị reduceOnly từ cột expiration bằng regex
     df = df.with_columns([
         pl.col("expiration")
@@ -189,20 +184,22 @@ for file_path in csv_files:
     # Tính PnL và log trạng thái vị thế
     df_with_pnl = compute_pnl_average_cost_with_log(df)
     
-    # Nếu muốn thêm cột lưu tên file (để phân biệt)
+    # Thêm cột account dựa trên tên file
+    account_name = os.path.basename(file_path)
     df_with_pnl = df_with_pnl.with_columns([
-        pl.lit(os.path.basename(file_path)).alias("file")
+        pl.lit(account_name).alias("account")
     ])
     
-    print(
-        df_with_pnl.select([
-            "time",
-            "ticker",
-            "isBuyer",
-            "reduceOnly_bool",
-            "averagePrice",
-            "filledAmount",
-            "cumulativePnL",
-            "position_state"
-        ])
-    )
+    # Lấy giá trị cumulativePnL của giao dịch cuối cùng (tức là kết quả cuối cùng của account)
+    final_cum_pnl = df_with_pnl["cumulativePnL"].to_list()[-1]
+    
+    # Thêm kết quả vào danh sách
+    account_pnl_list.append({"account": account_name, "cumulativePnL": final_cum_pnl})
+
+# Tạo DataFrame kết quả và hiển thị
+result_df = pl.DataFrame(account_pnl_list)
+print(result_df)
+
+# Tính tổng PnL của tất cả các account
+total_pnl = result_df["cumulativePnL"].sum()
+print("Tổng PnL của tất cả các account:", total_pnl)
