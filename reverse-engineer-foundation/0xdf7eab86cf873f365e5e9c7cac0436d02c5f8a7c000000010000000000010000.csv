@@ -1,0 +1,4 @@
+marketId,orderId,time,ticker,tickSize,stepSize,isBuyer,price,amount,filledAmount,status,expiration,triggerCondition,averagePrice,context
+2,21812624,2025-02-27 12:32:06,CRYPTO_ETH_PERP,0.01000000,0.00100000,False,2346.3,0.468,0.468,filled,"{'timeInForce': 'immediate_or_cancel', 'reduceOnly': True, 'selfTradeBehavior': 'cancel_provide', 'expiresAt': None, 'isMarketOrder': True}",{'last_price': {'below': '2351.00000000'}},2350.94,
+2,21807435,2025-02-27 12:21:46,CRYPTO_ETH_PERP,0.01000000,0.00100000,True,2347,0.468,0.468,filled,"{'timeInForce': 'default', 'reduceOnly': False, 'selfTradeBehavior': 'cancel_provide', 'expiresAt': None, 'isMarketOrder': False}",,2347,
+2,21805526,2025-02-27 12:18:31,CRYPTO_ETH_PERP,0.01000000,0.00100000,True,2343,0.469,0,canceled,"{'timeInForce': 'default', 'reduceOnly': False, 'selfTradeBehavior': 'cancel_provide', 'expiresAt': None, 'isMarketOrder': False}",,,

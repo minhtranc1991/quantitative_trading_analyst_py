@@ -1,0 +1,2 @@
+marketId,orderId,time,ticker,tickSize,stepSize,isBuyer,price,amount,filledAmount,status,expiration,triggerCondition,averagePrice,context
+2,22650275,2025-02-28 09:27:59,CRYPTO_ETH_PERP,0.01000000,0.00100000,True,2145.94,0.157,0.157,filled,"{'timeInForce': 'immediate_or_cancel', 'reduceOnly': False, 'selfTradeBehavior': 'cancel_provide', 'expiresAt': None, 'isMarketOrder': True}",,2141.66,
