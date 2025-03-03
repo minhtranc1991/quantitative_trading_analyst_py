@@ -1,7 +1,0 @@
-marketId,orderId,time,ticker,tickSize,stepSize,isBuyer,price,amount,filledAmount,status,expiration,triggerCondition,averagePrice,context
-2,5462842,2/8/2025 2:16,CRYPTO_ETH_PERP,0.01,0.001,FALSE,2623.85,2.071,2.071,filled,"{'timeInForce': 'immediate_or_cancel', 'reduceOnly': True, 'selfTradeBehavior': 'cancel_provide', 'expiresAt': None, 'isMarketOrder': True}",,2629.064785,
-2,5392908,2/7/2025 21:01,CRYPTO_ETH_PERP,0.01,0.001,TRUE,2590.23,0.823,0.823,filled,"{'timeInForce': 'post_only', 'reduceOnly': False, 'expiresAt': 1738962081175, 'isMarketOrder': False}",,2590.23,{'type': 'insurance_cover'}
-2,5392398,2/7/2025 20:59,CRYPTO_ETH_PERP,0.01,0.001,TRUE,2585.43,0.774,0.774,filled,"{'timeInForce': 'post_only', 'reduceOnly': False, 'expiresAt': 1738961967217, 'isMarketOrder': False}",,2585.43,{'type': 'insurance_cover'}
-2,5392362,2/7/2025 20:59,CRYPTO_ETH_PERP,0.01,0.001,TRUE,2585.43,0.158,0.158,filled,"{'timeInForce': 'post_only', 'reduceOnly': False, 'expiresAt': 1738961959478, 'isMarketOrder': False}",,2585.43,{'type': 'insurance_cover'}
-2,5392319,2/7/2025 20:59,CRYPTO_ETH_PERP,0.01,0.001,TRUE,2585.43,0.158,0.158,filled,"{'timeInForce': 'post_only', 'reduceOnly': False, 'expiresAt': 1738961949469, 'isMarketOrder': False}",,2585.43,{'type': 'insurance_cover'}
-2,5392232,2/7/2025 20:58,CRYPTO_ETH_PERP,0.01,0.001,TRUE,2585.25,0.158,0.158,filled,"{'timeInForce': 'post_only', 'reduceOnly': False, 'expiresAt': 1738961939449, 'isMarketOrder': False}",,2585.25,{'type': 'insurance_cover'}
