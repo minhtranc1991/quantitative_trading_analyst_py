@@ -12,7 +12,8 @@ pl.Config.set_fmt_str_lengths(50)
 def compute_pnl_average_cost_with_log(df: pl.DataFrame) -> pl.DataFrame:
     """
     Tính PnL dựa trên phương pháp trung bình giá (average cost) cho mỗi ticker.
-    Sau mỗi giao dịch, log lại trạng thái vị thế và trạng thái lệnh (Open/Close).
+    Sau mỗi giao dịch, log lại trạng thái vị thế, trạng thái lệnh (Open/Close)
+    và ghi nhận số lượng hiện tại (current_qty) của vị thế.
     """
     # Sắp xếp theo thời gian (chuỗi time có định dạng chuẩn lexicographically)
     df = df.sort(by="time")
@@ -23,16 +24,17 @@ def compute_pnl_average_cost_with_log(df: pl.DataFrame) -> pl.DataFrame:
     # - avg_price: giá vốn trung bình
     positions = {}
 
-    # Danh sách lưu kết quả PnL và log trạng thái sau mỗi giao dịch
+    # Danh sách lưu kết quả PnL, log trạng thái và số lượng hiện tại sau mỗi giao dịch
     realized_pnl_list = []
     position_state_list = []
+    current_qty_list = []  # lưu lại số lượng hiện tại của vị thế sau mỗi giao dịch
 
     for row in df.iter_rows(named=True):
         ticker = row["ticker"]
         is_buyer = row["isBuyer"]             # True/False
-        reduce_only = row["reduceOnly_bool"]  # True/False
-        price = row["averagePrice"]           # float
-        qty = row["filledAmount"]             # float
+        reduce_only = row["reduceOnly_bool"]    # True/False
+        price = row["averagePrice"]             # float
+        qty = row["filledAmount"]               # float
 
         # Nếu ticker chưa có vị thế, khởi tạo
         if ticker not in positions:
@@ -123,26 +125,29 @@ def compute_pnl_average_cost_with_log(df: pl.DataFrame) -> pl.DataFrame:
         order_status = "Close" if reduce_only else "Open"
         position_log_str = f"{order_status}-{pos['side']}, qty={pos['quantity']:.4f}, avg={pos['avg_price']:.2f}"
         position_state_list.append(position_log_str)
+        current_qty_list.append(pos["quantity"])
 
     # Thêm các cột computed vào DataFrame
     df = df.with_columns([
         pl.Series(name="realizedPnL", values=realized_pnl_list),
-        pl.Series(name="position_state", values=position_state_list)
+        pl.Series(name="position_state", values=position_state_list),
+        pl.Series(name="current_qty", values=current_qty_list)
     ])
     df = df.with_columns(
-        pl.col("realizedPnL").cum_sum().alias("cumulativePnL")
+        pl.col("realizedPnL").cum_sum().alias("cumulative_pnl")
     )
     return df
 
-# --- Hàm tính các chỉ số cơ bản của một tài khoản (lược bỏ tính theo từng giờ) ---
+# --- Hàm tính các chỉ số cơ bản của một tài khoản (sử dụng thời gian giữ lệnh) ---
 def compute_basic_metrics_from_df(df: pl.DataFrame, account: str) -> dict:
     """
     Tính các chỉ số cơ bản cho một tài khoản:
       - total_trades: Tổng số giao dịch
       - avg_profit_per_trade: Lợi nhuận trung bình trên mỗi giao dịch
       - start_time, end_time: Thời gian giao dịch đầu tiên và cuối cùng
-      - trading_period_hours: Khoảng thời gian giao dịch (giờ)
-      - trades_per_hour: Số giao dịch trung bình trên 1 giờ
+      - holding_times: Tổng thời gian giữ lệnh (chỉ tính khoảng thời gian có lệnh mở, đơn vị giờ)
+      - trades_per_hour: Số giao dịch trung bình trên 1 giờ (dựa trên thời gian giữ lệnh)
+      - average_holding_time_minutes: Thời gian giữ lệnh trung bình cho mỗi khoảng giữ lệnh (đơn vị giờ)
     Yêu cầu: Cột "time" có định dạng chuỗi "%Y-%m-%d %H:%M:%S"
     """
     # Chuyển cột "time" sang kiểu Datetime nếu chưa có
@@ -156,11 +161,22 @@ def compute_basic_metrics_from_df(df: pl.DataFrame, account: str) -> dict:
     start_time = df["time_dt"].min()
     end_time = df["time_dt"].max()
     
-    trading_period_hours = 0.0
-    if start_time is not None and end_time is not None:
-        trading_period_hours = (end_time.timestamp() - start_time.timestamp()) / 3600.0
+    # Tính tổng thời gian giữ lệnh và lưu lại từng khoảng thời gian giữ lệnh
+    time_list = df["time_dt"].to_list()
+    qty_list = df["current_qty"].to_list()
+    holding_intervals = []
+    for i in range(len(df) - 1):
+        if qty_list[i] > 0:
+            delta = (time_list[i+1] - time_list[i]).total_seconds()
+            holding_intervals.append(delta)
     
-    trades_per_hour = total_trades / trading_period_hours if trading_period_hours > 0 else None
+    total_holding_seconds = sum(holding_intervals)
+    holding_times = total_holding_seconds / 3600.0  # Tổng thời gian giữ lệnh tính bằng giờ
+    
+    # Tính thời gian giữ lệnh trung bình cho mỗi khoảng (nếu có khoảng giữ lệnh nào)
+    average_holding_time_minutes = (sum(holding_intervals) / len(holding_intervals)) / 60.0 if holding_intervals else 0.0
+
+    trades_per_hour = total_trades / holding_times if holding_times > 0 else None
 
     metrics = {
         "account": account,
@@ -168,8 +184,9 @@ def compute_basic_metrics_from_df(df: pl.DataFrame, account: str) -> dict:
         "avg_profit_per_trade": avg_profit,
         "start_time": start_time,
         "end_time": end_time,
-        "trading_period_hours": trading_period_hours,
-        "trades_per_hour": trades_per_hour
+        "holding_times": holding_times,
+        "average_holding_time_minutes": average_holding_time_minutes,
+        "trades_per_hour": trades_per_hour        
     }
     return metrics
 
@@ -178,32 +195,42 @@ def process_csv_file(file_path: str) -> (pl.DataFrame, dict):
     """
     Đọc file CSV, xử lý dữ liệu (lọc, trích xuất reduceOnly, tính PnL & log vị thế),
     thêm cột account và tính các chỉ số cơ bản.
+    Nếu file không chứa dữ liệu, file sẽ bị xóa tự động.
     Trả về:
       - df_with_pnl: DataFrame đã tính PnL
       - metrics: dict chứa các chỉ số cơ bản của tài khoản
     """
-    # Đọc file CSV
-    df = pl.read_csv(
-        file_path,
-        schema_overrides={
-            "filledAmount": pl.Float64  # Chỉ định cột filledAmount là float
-        }
-    )
-    
-    # Kiểm tra nếu file rỗng
-    if df.is_empty():
-        raise ValueError(f"File {file_path} trống, bỏ qua.")
-    
-    # Lọc chỉ các dòng có averagePrice khác None
+    try:
+        # Đọc file CSV, chỉ định kiểu cho cột filledAmount
+        df = pl.read_csv(
+            file_path,
+            schema_overrides={
+                "filledAmount": pl.Float64
+            }
+        )
+        # Nếu DataFrame rỗng thì tự xóa file
+        if df.is_empty():
+            os.remove(file_path)
+            raise ValueError(f"File {file_path} trống và đã bị xóa tự động.")
+    except Exception as e:
+        # Nếu lỗi xuất hiện do file rỗng (empty CSV), xóa file và raise lại lỗi
+        if "empty CSV" in str(e):
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            raise ValueError(f"File {file_path} trống và đã bị xóa tự động.") from e
+        else:
+            raise
+
+    # Lọc các dòng có averagePrice khác None
     df = df.filter(pl.col("averagePrice").is_not_null())
-    
+
     # Trích xuất giá trị reduceOnly từ cột expiration bằng regex
     df = df.with_columns([
         pl.col("expiration")
           .str.extract(r"'reduceOnly':\s*(\w+)", 1)
           .alias("reduceOnly_extracted")
     ])
-    
+
     # Chuyển reduceOnly_extracted sang Boolean: "True" -> True, còn lại -> False
     df = df.with_columns([
         pl.when(pl.col("reduceOnly_extracted") == "True")
@@ -211,14 +238,14 @@ def process_csv_file(file_path: str) -> (pl.DataFrame, dict):
           .otherwise(False)
           .alias("reduceOnly_bool")
     ])
-    
+
     # Tính PnL và log trạng thái vị thế
     df_with_pnl = compute_pnl_average_cost_with_log(df)
-    
+
     # Thêm cột account dựa trên tên file
     account_name = os.path.basename(file_path)
     df_with_pnl = df_with_pnl.with_columns([pl.lit(account_name).alias("account")])
-    
+
     # Tính các chỉ số cơ bản
     metrics = compute_basic_metrics_from_df(df_with_pnl, account_name)
     return df_with_pnl, metrics
@@ -240,9 +267,9 @@ def main():
         try:
             df_with_pnl, metrics = process_csv_file(file_path)
             
-            # Lấy cumulativePnL của giao dịch cuối cùng của account
-            final_cum_pnl = df_with_pnl["cumulativePnL"].to_list()[-1]
-            account_pnl_list.append({"account": os.path.basename(file_path), "cumulativePnL": final_cum_pnl})
+            # Lấy cumulative_pnl của giao dịch cuối cùng của account
+            final_cum_pnl = df_with_pnl["cumulative_pnl"].to_list()[-1]
+            account_pnl_list.append({"account": os.path.basename(file_path), "cumulative_pnl": final_cum_pnl})
             all_metrics.append(metrics)
             
             # print(df_with_pnl.select([
@@ -253,25 +280,23 @@ def main():
             #     "averagePrice",
             #     "filledAmount",
             #     "realizedPnL",
-            #     "cumulativePnL",
+            #     "cumulative_pnl",
             #     "position_state"
             # ]))
-            
-        except pl.exceptions.NoDataError:
-            print(f"⚠️ Lỗi: File {file_path} không chứa dữ liệu hợp lệ (hoặc rỗng), bỏ qua.")
+
         except Exception as e:
             print(f"❌ Lỗi khi xử lý file {file_path}: {e}")
     
     # Tạo DataFrame kết quả cho PnL và các chỉ số cơ bản
-    result_df = pl.DataFrame(account_pnl_list)  # Chứa cột "account" và "cumulativePnL"
+    result_df = pl.DataFrame(account_pnl_list)  # Chứa cột "account" và "cumulative_pnl"
     metrics_df = pl.DataFrame(all_metrics)      # Chứa cột "account" và các chỉ số khác
 
     # Gộp hai DataFrame dựa trên cột "account"
-    combined_df = result_df.join(metrics_df, on="account", how="inner").sort("trades_per_hour")
+    combined_df = result_df.join(metrics_df, on="account", how="inner").sort("cumulative_pnl")
     print(combined_df)
 
     # Tính tổng PnL của tất cả các account
-    total_pnl = result_df["cumulativePnL"].sum()
+    total_pnl = result_df["cumulative_pnl"].sum()
     print("Tổng PnL của tất cả các account:", total_pnl)
 
 if __name__ == "__main__":
