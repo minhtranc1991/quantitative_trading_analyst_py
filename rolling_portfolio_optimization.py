@@ -36,12 +36,34 @@ def fetch_ticker_data(start_date="2020-09-01"):
         data_frames.append(df)
 
     # Gộp dữ liệu thành DataFrame tổng hợp và fill NaN bằng 0
-    final_df = pd.concat(data_frames, axis=1).fillna(0).reset_index()
+    df = pd.concat(data_frames, axis=1).fillna(0).reset_index()
+    df['usdt'] = 1
 
     session.close()
 
-    return final_df
+    return df
+
+def create_rolling_windows(df, window_size=720, step_size=24):
+    """
+    Tạo dữ liệu rolling windows với yield để tiết kiệm bộ nhớ.
+    Parameters:
+    - df: DataFrame gốc chứa dữ liệu
+    - window_size: Kích thước cửa sổ (720 rows)
+    - step_size: Bước nhảy (24 rows)
+    Yield:
+    - DataFrame với dữ liệu rolling window ở mỗi bước
+    """
+    total_rows = len(df)
+    
+    for end_idx in range(window_size, total_rows + 1, step_size):
+        yield df.iloc[:end_idx]
 
 if __name__ == "__main__":
-    df = fetch_ticker_data()
-    
+
+    start_date = "2025-01-01"
+
+    df = fetch_ticker_data(start_date)
+
+    rolling_results = []
+    for window_df in create_rolling_windows(df):    
+        print(window_df)

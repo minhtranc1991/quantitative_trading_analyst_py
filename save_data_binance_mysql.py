@@ -1,10 +1,11 @@
 import os
 import time
+import config
+import shutil
 import pandas as pd
 from datetime import datetime, date, timedelta
-import config
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Table, Column, MetaData, DateTime, Float, Integer, String, Date, inspect, insert, select
+from sqlalchemy import Table, Column, MetaData, DateTime, Float, Integer, String, Date, inspect, insert, select, text
 import traceback
 import concurrent.futures
 
@@ -41,16 +42,23 @@ def create_table_if_not_exists(table_name):
         print(f"Bảng '{table_name}' đã được tạo.")
 
 # Hàm để lưu dữ liệu vào bảng (batch insert)
-def save_data_to_table(table_name, data):
+def save_data_to_table(table_name, data, batch_size=1000):
+    data.dropna(inplace=True)  # Loại bỏ các bản ghi chứa giá trị NaN
     data_dict = data.to_dict(orient='records')
     if not data_dict:
         print(f"Không có dữ liệu để lưu vào bảng '{table_name}'.")
         return
 
     table = Table(table_name, metadata, autoload_with=engine)
-    with engine.begin() as connection:
-        connection.execute(insert(table).prefix_with("IGNORE"), data_dict)
-    print(f"Đã lưu {len(data_dict)} bản ghi vào bảng '{table_name}'.")
+    
+    try:
+        with engine.begin() as connection:
+            for i in range(0, len(data_dict), batch_size):
+                batch = data_dict[i:i + batch_size]
+                connection.execute(insert(table).prefix_with("IGNORE"), batch)
+        print(f"Đã lưu {len(data_dict)} bản ghi vào bảng '{table_name}'.")
+    except Exception as e:
+        print(f"Lỗi khi lưu dữ liệu vào bảng '{table_name}': {str(e)}")
 
 # Hàm để cập nhật last_updated_date và first_open_time trong bảng tickers
 def update_ticker_table(ticker, first_open_time, last_updated_date):
@@ -140,7 +148,7 @@ def read_csv_file(file_path):
 def get_table_name(ticker):
     return ticker.lower().replace("usdt", "_usdt")
 
-def process_ticker(ticker):
+def process_ticker(ticker, last_updated_date=None):
     table_name = get_table_name(ticker)
     daily_files = os.path.join(os.getcwd(), f"binance_data/spot//{ticker}/1h")
     all_files = get_csv_files(daily_files)
@@ -155,6 +163,14 @@ def process_ticker(ticker):
         return
 
     data.sort_values(by='open_time', inplace=True)
+
+    if last_updated_date:
+        data = data[data['open_time'] >= pd.to_datetime(last_updated_date)]
+
+    if data.empty:
+        print(f"Không có dữ liệu mới cho {ticker} sau ngày {last_updated_date}")
+        return
+
     create_table_if_not_exists(table_name)
 
     try:
@@ -167,48 +183,77 @@ def process_ticker(ticker):
         print(f"Lỗi nghiêm trọng khi xử lý {ticker}: {str(e)}\n{traceback.format_exc()}")
         session.rollback()
 
-def get_tickers_from_folder():
-    """Lấy danh sách các tickers từ thư mục binance_data/spot/."""
-    tickers = []
-    spot_folder = os.path.join(os.getcwd(), "binance_data/spot/")
-    
-    try:
-        # Kiểm tra xem thư mục có tồn tại không
-        if not os.path.exists(spot_folder):
-            print(f"Warning: Thư mục không tồn tại: {spot_folder}")
-            return tickers
+def delete_unwanted_folders(folder_path="binance_data/spot/"):
+    """Xóa các thư mục có chứa UPUSDT, DOWNUSDT, BEARUSDT, BULLUSDT."""
+    full_path = os.path.join(os.getcwd(), folder_path)
 
-        # Lặp qua tất cả các mục trong thư mục
-        for item in os.listdir(spot_folder):
-            item_path = os.path.join(spot_folder, item)
-            # Kiểm tra xem mục đó có phải là thư mục không
+    if not os.path.exists(full_path):
+        print(f"Thư mục không tồn tại: {full_path}")
+        return
+
+    try:
+        for item in os.listdir(full_path):
+            item_path = os.path.join(full_path, item)
+            if os.path.isdir(item_path) and any(keyword in item for keyword in ["UPUSDT", "DOWNUSDT", "BEARUSDT", "BULLUSDT"]):
+                shutil.rmtree(item_path)
+                print(f"Đã xóa thư mục: {item_path}")
+    except Exception as e:
+        print(f"Lỗi khi xóa thư mục trong {full_path}: {str(e)}")
+
+def get_tickers_from_folder(folder_path="binance_data/spot/"):
+    """Lấy danh sách các tickers từ thư mục chỉ định."""
+    tickers = []
+    full_path = os.path.join(os.getcwd(), folder_path)
+
+    delete_unwanted_folders(folder_path)
+
+    if not os.path.exists(full_path):
+        print(f"Thư mục không tồn tại: {full_path}")
+        return tickers
+
+    try:
+        for item in os.listdir(full_path):
+            item_path = os.path.join(full_path, item)
             if os.path.isdir(item_path):
                 tickers.append(item)
     except Exception as e:
-        print(f"Lỗi khi đọc thư mục {spot_folder}: {str(e)}")
-    
+        print(f"Lỗi khi đọc thư mục {full_path}: {str(e)}")
+
     return tickers
 
-# Hàm để định dạng thời gian thành hh:mm:ss
 def format_time(seconds):
     return str(timedelta(seconds=int(seconds)))
+
+def get_last_updated_dates():
+    try:
+        result = session.execute(select(tickers_table.c.ticker, tickers_table.c.last_updated_date)).fetchall()
+        return {row.ticker: row.last_updated_date for row in result}
+    except Exception as e:
+        print(f"Lỗi khi lấy danh sách last_updated_date: {str(e)}")
+        return {}
 
 # Hàm chính
 def main():
     tickers = get_tickers_from_folder()
+    last_updated_dates = get_last_updated_dates()
+
     total_tickers = len(tickers)
     processed_tickers = 0
     start_time = time.time()
 
     for ticker in tickers:
-        process_ticker(ticker)
+        last_updated_date = last_updated_dates.get(get_table_name(ticker))
+        process_ticker(ticker, last_updated_date)
         processed_tickers += 1
+        
         elapsed_time = time.time() - start_time
         avg_time_per_ticker = elapsed_time / processed_tickers if processed_tickers > 0 else 0
         remaining_tickers = total_tickers - processed_tickers
         estimated_remaining_time = avg_time_per_ticker * remaining_tickers
 
-        print(f"Đã xử lý {processed_tickers}/{total_tickers} tickers. Thời gian đã trôi qua: {format_time(elapsed_time)}. Ước tính thời gian còn lại: {format_time(estimated_remaining_time)}.")
+        print(f"Đã xử lý {processed_tickers}/{total_tickers} tickers. "
+              f"Thời gian đã trôi qua: {format_time(elapsed_time)}. "
+              f"Ước tính thời gian còn lại: {format_time(estimated_remaining_time)}.")
 
 if __name__ == "__main__":
     engine = config.create_database_engine()
