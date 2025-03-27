@@ -4,3 +4,4 @@
 combined_ticker_data_usdt.csv
 /data
 *.csv
+/__pycache__
