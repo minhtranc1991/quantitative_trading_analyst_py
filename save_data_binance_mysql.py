@@ -176,7 +176,8 @@ def process_ticker(ticker, last_updated_date=None):
     try:
         save_data_to_table(table_name, data)
         first_open_time = data['open_time'].min().date()
-        update_ticker_table(table_name, first_open_time, date.today())
+        last_updated_date = data['open_time'].max().date()
+        update_ticker_table(table_name, first_open_time, last_updated_date)
         session.commit()
         print(f"Đã xử lý thành công ticker: {ticker}")
     except Exception as e:
