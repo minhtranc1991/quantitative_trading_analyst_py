@@ -8,7 +8,8 @@ import multiprocessing
 from datetime import datetime, timedelta, date
 from binance_historical_data import BinanceDataDumper
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import Table, Column, MetaData, DateTime, Float, Integer, String, PrimaryKeyConstraint, Date, inspect, insert, update
+from sqlalchemy import Table, Column, MetaData, DateTime, Float, Integer, String, PrimaryKeyConstraint, Date, inspect, update
+from sqlalchemy.dialects.mysql import insert
 
 # Khai báo metadata
 metadata = MetaData()
@@ -130,14 +131,20 @@ def save_data_to_table(table_name, data):
 
 # Hàm để cập nhật last_updated_date trong bảng tickers
 def update_tickers_table(ticker, first_open_time, last_updated_date, name):
-    session.execute(insert(tickers_table)
-                    .prefix_with("IGNORE")
-                    .values(
-                        ticker=ticker,
-                        first_open_time=first_open_time,
-                        last_updated_date=last_updated_date,
-                        name=name
-                        ))
+    stmt = insert(tickers_table).values(
+        ticker=ticker,
+        first_open_time=first_open_time,
+        last_updated_date=last_updated_date,
+        name=name
+    )
+
+    stmt = stmt.on_duplicate_key_update(
+        first_open_time=stmt.inserted.first_open_time,
+        last_updated_date=stmt.inserted.last_updated_date,
+        name=stmt.inserted.name
+    )
+
+    session.execute(stmt)
 
 # Hàm để lấy tất cả các file CSV từ một thư mục
 def get_csv_files(directory):
@@ -232,32 +239,33 @@ def main():
 
         table_name = get_table_name(ticker)
         data_info = tickers_data.get(ticker, {})
-        first_open_time = data_info.get('first_open_time')
 
+        if data_info:
+            tickers_update_info.append({
+                'ticker': ticker,
+                'last_updated_date': data_info.get('last_updated_date'),
+                'first_open_time': data_info.get('first_open_time'),
+                'name': table_name
+            })
+            continue
+
+        first_open_time = find_first_data_date(ticker)
         if first_open_time is None:
-            first_open_time = find_first_data_date(ticker)
-            if first_open_time is None:
-                print(f"Bỏ qua {ticker} do không tìm thấy dữ liệu đầu tiên.")
-                continue
+            print(f"Bỏ qua {ticker} do không tìm thấy dữ liệu đầu tiên.")
+            continue
 
-        last_updated_date = data_info.get('last_updated_date', first_open_time)
-
-        if last_updated_date != first_open_time:
-            last_updated_date = last_updated_date - timedelta(days=1)
+        last_updated_date = first_open_time
 
         try:
             update_tickers_table(ticker, first_open_time, last_updated_date, table_name)
             session.commit()
-            tickers_update_info.append({ # Thêm vào list để sort
+            tickers_update_info.append({
                 'ticker': ticker,
                 'last_updated_date': last_updated_date,
+                'first_open_time': first_open_time,
                 'name': table_name
             })
-            print(f"{ticker}: {format_time(time.time() - ticker_start_time)}, {index + 1}/{total_tickers}", end="")
-            avg_ticker_time = (time.time() - start_time) / (index + 1)
-            remaining_tickers = total_tickers - index - 1
-            estimated_time = avg_ticker_time * remaining_tickers
-            print(f", Ước tính còn lại: {format_time(estimated_time)}")
+            print(f"{ticker}: {format_time(time.time() - ticker_start_time)}, {index + 1}/{total_tickers}")
         except Exception as e:
             session.rollback()
             print(f"Lỗi khi cập nhật {ticker}: {str(e)}, thời gian: {format_time(time.time() - ticker_start_time)}")
@@ -270,30 +278,33 @@ def main():
     print(f"Sắp xếp tickers theo ngày cập nhật: thời gian: {format_time(time.time() - start_time)}")
     print(f"Hoàn thành xử lý và cập nhật tickers, tổng thời gian: {format_time(time.time() - start_time)}")
     
-    # Duyệt qua từng ticker
     for i, ticker in enumerate(tickers):
-        start_time = time.time()
-        print(f"🔄 Đang xử lý {ticker}... (Ticker {i + 1}/{len(tickers)})")
-        ticker_info = next((info for info in tickers_update_info if info['ticker'] == ticker), {})
+        ticker_start_time = time.time()
 
+        print(f"🔄 Đang xử lý {ticker}... (Ticker {i + 1}/{len(tickers)})")
+
+        ticker_info = next((info for info in tickers_update_info if info['ticker'] == ticker), {})
         date_start = ticker_info.get('last_updated_date')
+        first_open_time = ticker_info.get('first_open_time')
+
         if not date_start:
             date_start = find_first_data_date(ticker)
         else:
             date_start = date_start + timedelta(days=-1)
 
         try:
-            result = download_ticker(ticker, date_start)
-            elapsed_time = time.time() - start_time
-            completed_times.append(elapsed_time)
+            download_ticker(ticker, date_start)
+            elapsed_time = time.time() - ticker_start_time
 
-            if elapsed_time > 60:
-                print(f"⚠️ Bỏ qua {ticker}: Thời gian chạy vượt quá 60 giây ({format_time(elapsed_time)})")
+            time_stop = 90
+            if elapsed_time > time_stop:
+                print(f"⚠️ Bỏ qua {ticker}: Thời gian chạy vượt quá {time_stop} giây")
                 continue
-            print(f"✅ Thành công {ticker}: {result} (Thời gian: {format_time(elapsed_time)})")
+
         except Exception as e:
             print(f"❌ Lỗi {ticker}: {e}")
-
+        
+        # Xử lý dữ liệu
         daily_files = os.path.join(os.getcwd(), f"spot/daily/klines/{ticker}/1h")
         monthly_files = os.path.join(os.getcwd(), f"spot/monthly/klines/{ticker}/1h")
 
@@ -313,7 +324,7 @@ def main():
 
         try:
             save_data_to_table(table_name, data)
-            update_tickers_table(ticker, first_open_time, date.today(), table_name)
+            update_tickers_table(ticker, first_open_time, date.today() - timedelta(days=1), table_name)
             session.commit()
         except FileNotFoundError as e:
             print(f"❗ Lỗi không tìm thấy file cho {ticker}: {str(e)}")
@@ -325,8 +336,14 @@ def main():
         finally:
             session.close()
 
-        remaining_tickers = len(tickers) - (i + 1)
-        print(f"⏳ Ước tính thời gian còn lại: {estimate_remaining_time(completed_times, remaining_tickers)}")
+        # Hiển thị trạng thái và ước tính thời gian còn lại ở cuối vòng lặp
+        elapsed_time = time.time() - ticker_start_time
+        print(f"{ticker}: {format_time(elapsed_time)}, {i + 1}/{len(tickers)}", end="")
+
+        avg_ticker_time = (time.time() - start_time) / (i + 1)
+        remaining_tickers = len(tickers) - i - 1
+        estimated_time = avg_ticker_time * remaining_tickers
+        print(f", Ước tính còn lại: {format_time(estimated_time)}")
 
 # Chạy hàm chính
 if __name__ == "__main__":
