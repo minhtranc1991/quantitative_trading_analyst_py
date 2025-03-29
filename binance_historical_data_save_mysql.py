@@ -192,6 +192,12 @@ def download_ticker(ticker, date_start):
         is_to_update_existing=False,
     )
 
+def run_download_ticker(ticker, date_start):
+    try:
+        download_ticker(ticker, date_start)
+    except Exception as e:
+        print(f"❌ Lỗi khi download {ticker}: {e}")
+
 def process_csv_files(ticker):
     daily_path = os.path.join(os.getcwd(), f"spot/daily/klines/{ticker}/1h")
     monthly_path = os.path.join(os.getcwd(), f"spot/monthly/klines/{ticker}/1h")
@@ -281,15 +287,16 @@ def main():
         else:
             date_start = date_start - timedelta(days=1)
 
-        try:
-            download_ticker(ticker, date_start)
-            elapsed_time = time.time() - ticker_start_time
-            time_stop = 90
-            if elapsed_time > time_stop:
-                print(f"⚠️ Bỏ qua {ticker}: Thời gian chạy vượt quá {time_stop} giây")
-                continue
-        except Exception as e:
-            print(f"❌ Lỗi khi download {ticker}: {e}")
+        time_stop = 90  # thời gian timeout (giây)
+        proc = multiprocessing.Process(target=run_download_ticker, args=(ticker, date_start))
+        proc.start()
+        proc.join(timeout=time_stop)
+
+        if proc.is_alive():
+            print(f"⚠️ Bỏ qua {ticker}: Thời gian chạy vượt quá {time_stop} giây")
+            proc.terminate()  # Kết thúc process nếu vượt thời gian
+            proc.join()       # Chờ cho process kết thúc
+            continue
 
         # Xử lý dữ liệu CSV
         data = process_csv_files(ticker)
