@@ -348,13 +348,13 @@ def download_binance_data(
 if __name__ == "__main__":
     download_binance_data(
         asset_type="spot",
-        time_period="daily",
+        time_period="monthly",
         data_type="klines",
         data_frequency="1h",
         destination_dir="./binance_data",
         symbol_suffix=["USDT"],
         batch_number=1,
-        total_batches=1,
+        total_batches=3,
         max_workers=50,
         max_extract_workers=10
     )
