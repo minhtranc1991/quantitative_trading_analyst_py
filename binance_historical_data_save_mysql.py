@@ -308,7 +308,8 @@ def main():
 
         try:
             save_data_to_table(session, engine, table_name, data)
-            update_tickers_table(session, ticker, first_open_time, date.today() - timedelta(days=1), table_name)
+            last_updated_date = data['open_time'].max()
+            update_tickers_table(session, ticker, first_open_time, last_updated_date, table_name)
             session.commit()
         except FileNotFoundError as e:
             print(f"❗ Lỗi không tìm thấy file cho {ticker}: {str(e)}")
@@ -320,13 +321,14 @@ def main():
         finally:
             session.close()
 
-        # Hiển thị thời gian xử lý và ước tính thời gian còn lại
+        # Hiển thị thời gian xử lý và ước tính còn lại
         elapsed_time = time.time() - ticker_start_time
-        print(f"{ticker}: {format_time(elapsed_time)}, {i + 1}/{len(tickers)}", end="")
-        avg_ticker_time = (time.time() - start_time) / (i + 1)
+        total_elapsed = time.time() - start_time
+        avg_ticker_time = total_elapsed / (i + 1)
         remaining_tickers = len(tickers) - i - 1
         estimated_time = avg_ticker_time * remaining_tickers
-        print(f", Ước tính còn lại: {format_time(estimated_time)}")
+
+        print(f"✅ {ticker}: {format_time(elapsed_time)} | Đã xử lý: {format_time(total_elapsed)} | Còn lại: {format_time(estimated_time)} ({i + 1}/{len(tickers)})")
 
 # ---------------------------------------------------------------------------
 # MAIN - KHỞI CHẠY CHƯƠNG TRÌNH
