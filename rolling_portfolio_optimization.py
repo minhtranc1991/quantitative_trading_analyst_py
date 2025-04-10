@@ -2,6 +2,7 @@ import config
 import pandas as pd
 from sqlalchemy import Table, MetaData, select
 from sqlalchemy.orm import sessionmaker
+from pypfopt import expected_returns, CovarianceShrinkage, EfficientFrontier
 
 def fetch_ticker_data(start_date="2020-09-01"):
     engine = config.create_database_engine()
@@ -13,7 +14,7 @@ def fetch_ticker_data(start_date="2020-09-01"):
     tickers = Table('tickers', db_metadata, autoload_with=engine, schema='quant_trading')
 
     # Tạo truy vấn
-    query = select(tickers.c.ticker).where(
+    query = select(tickers.c.name).where(
         (tickers.c.first_open_time <= start_date) &
         ~tickers.c.ticker.like("%bear_%") &
         ~tickers.c.ticker.like("%bull_%") &
@@ -36,7 +37,11 @@ def fetch_ticker_data(start_date="2020-09-01"):
         data_frames.append(df)
 
     # Gộp dữ liệu thành DataFrame tổng hợp và fill NaN bằng 0
-    df = pd.concat(data_frames, axis=1).fillna(0).reset_index()
+    df = pd.concat(data_frames, axis=1).reset_index()
+    df.fillna(method='ffill', inplace=True)
+    df.fillna(0, inplace=True)
+    df['open_time'] = pd.to_datetime(df['open_time'])
+    df.set_index('open_time', inplace=True)
     df['usdt'] = 1
 
     session.close()
@@ -58,12 +63,38 @@ def create_rolling_windows(df, window_size=720, step_size=24):
     for end_idx in range(window_size, total_rows + 1, step_size):
         yield df.iloc[:end_idx]
 
+def optimize_portfolio(df_filtered, target_return=0.2, min_weight=0.05):
+    mu = expected_returns.mean_historical_return(df_filtered)
+    S = CovarianceShrinkage(df_filtered).ledoit_wolf()
+
+    # 1. Portfolio có tỷ lệ Sharpe cao nhất
+    ef_sharpe = EfficientFrontier(mu, S)
+    ef_sharpe.add_constraint(lambda w: w >= min_weight)  # Ràng buộc tối thiểu
+    ef_sharpe.max_sharpe()
+    weights_sharpe = ef_sharpe.clean_weights()
+    performance_sharpe = ef_sharpe.portfolio_performance(verbose=False)
+
+    # 2. Portfolio tối ưu
+    ef_optimal = EfficientFrontier(mu, S)
+    ef_optimal.add_constraint(lambda w: w >= min_weight)  # Ràng buộc tối thiểu
+    ef_optimal.efficient_return(target_return=target_return)
+    weights_optimal = ef_optimal.clean_weights()
+    performance_optimal = ef_optimal.portfolio_performance(verbose=False)
+
+    return {
+        "sharpe": (weights_sharpe, performance_sharpe),
+        "optimal": (weights_optimal, performance_optimal)
+    }
+
 if __name__ == "__main__":
 
     start_date = "2025-01-01"
+    min_weight = 0.05
+    target_return = 0.2
 
     df = fetch_ticker_data(start_date)
 
     rolling_results = []
     for window_df in create_rolling_windows(df):    
-        print(window_df)
+        results = optimize_portfolio(window_df, target_return, min_weight)
+        print(results)
