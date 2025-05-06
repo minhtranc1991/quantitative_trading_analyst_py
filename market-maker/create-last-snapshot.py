@@ -1,14 +1,6 @@
-from hftbacktest.data.utils import binancefutures
 from hftbacktest.data.utils.snapshot import create_last_snapshot
 
-file_name = 'btcusdt_20250119'
-data = binancefutures.convert(
-    f'data/{file_name}.gz',
-    output_filename=f'data/{file_name}.npz',
-    combined_stream=True,
-    buffer_size=200_000_000
-)
-
+file_name = 'btcusdt_20250118'
 # Builds End of Day snapshot. It will be used for the initial snapshot for next day.
 _ = create_last_snapshot(
     [f'data/{file_name}.npz'],
