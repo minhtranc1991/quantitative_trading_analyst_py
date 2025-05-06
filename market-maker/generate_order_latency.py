@@ -45,6 +45,6 @@ def generate_order_latency(feed_file, output_file = None, mul_entry = 1, offset_
 
     return order_latency
 
-date = '20250117'
+date = '20250118'
 file_name = 'btcusdt_' + date
-order_latency = generate_order_latency(f'data/{file_name}.npz', output_file=f'feed_latency_{date}.npz', mul_entry=4, mul_resp=3)
+order_latency = generate_order_latency(f'data/{file_name}.npz', output_file=f'latency/feed_latency_{date}.npz', mul_entry=4, mul_resp=3)

@@ -6,7 +6,7 @@ data = binancefutures.convert(
     f'data/{file_name}.gz',
     output_filename=f'data/{file_name}.npz',
     combined_stream=True,
-    buffer_size=200_000_000
+    buffer_size=500_000_000
 )
 
 # Builds End of Day snapshot. It will be used for the initial snapshot for next day.

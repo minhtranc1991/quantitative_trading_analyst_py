@@ -1,9 +1,10 @@
 import os
+import numpy as np
+from matplotlib import pyplot as plt
 from datetime import date, timedelta
 from numba import njit
 from hftbacktest import BUY_EVENT
 from hftbacktest import BacktestAsset, ROIVectorMarketDepthBacktest
-import numpy as np
 
 @njit
 def measure_trading_intensity_and_volatility(hbt):
@@ -88,11 +89,11 @@ def measure_trading_intensity(order_arrival_depth, out):
         max_tick = max(max_tick, tick)
     return out[:max_tick]
 
-backtest_date = '20250117'
+backtest_date = '20250118'
 eod = date.fromisoformat(backtest_date) - timedelta(days=1)
 ticker = 'btcusdt'
 file_name = ticker + '_' + backtest_date
-eod_file_name = ticker + '_' + eod + '_eod'
+eod_file_name = ticker + '_' + eod.strftime('%Y%m%d') + '_eod'
 
 files = [
     f'data/{file_name}.npz',
@@ -139,3 +140,12 @@ lambda_ /= 600
 
 # Creates ticks from the mid-price.
 ticks = np.arange(len(lambda_)) + .5
+
+print(f"Ticks: {ticks}")
+print(f"Lambda: {lambda_}")
+
+plt.figure(figsize=(16, 9))
+plt.plot(ticks, lambda_)
+plt.xlabel('$ \delta $ (ticks from the mid-price)')
+plt.ylabel('Count (per second)')
+plt.show()
