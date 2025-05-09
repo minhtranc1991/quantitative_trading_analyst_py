@@ -9,3 +9,4 @@ combined_ticker_data_usdt.csv
 *.pyc
 *.gz
 *.npz
+telegram-bot/config.py
