@@ -7,3 +7,7 @@ combined_ticker_data_usdt.csv
 /__pycache__
 *.zip
 *.pyc
+*.gz
+*.npz
+telegram-bot/config.py
+telegram-bot/config.py
