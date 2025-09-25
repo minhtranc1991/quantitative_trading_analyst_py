@@ -73,15 +73,15 @@ class BinanceDataHandler:
         return data
 
 # --- Sử dụng class ---
-# if __name__ == '__main__':
+if __name__ == '__main__':
 #     from multiprocessing import freeze_support
-#     freeze_support()
+    # freeze_support()
 
-#     handler = BinanceDataHandler(ticker='BTCUSDT', data_frequency='15m')
-#     handler.download_data("2025-02-15", "2025-03-01")
-#     crypto_data = handler.load_data()
+    handler = BinanceDataHandler(ticker='BTCUSDT', data_frequency='15m')
+    handler.download_data("2025-02-15", "2025-03-01")
+    crypto_data = handler.load_data()
 
-#     # Chuẩn bị dữ liệu mẫu
-#     if crypto_data is not None:
-#         data = crypto_data[:400].reset_index(drop=True)
-#         print(data)
+    # Chuẩn bị dữ liệu mẫu
+    if crypto_data is not None:
+        data = crypto_data[:400].reset_index(drop=True)
+        print(data)
