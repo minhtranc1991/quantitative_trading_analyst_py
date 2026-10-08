@@ -19,7 +19,7 @@ import time
 import concurrent.futures
 import json
 import schedule
-import TradingBot
+from trading_bot import TradingBot
 from functools import wraps
 
 # ================================================

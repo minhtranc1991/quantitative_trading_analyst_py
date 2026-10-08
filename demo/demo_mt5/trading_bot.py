@@ -1,6 +1,6 @@
 import MetaTrader5 as mt5
-import ConfigManager
-import TradeManager
+from config_manager import ConfigManager
+from trade_manager import TradeManager
 import schedule
 import concurrent.futures
 import time
