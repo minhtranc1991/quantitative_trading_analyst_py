@@ -1,10 +1,17 @@
-
-/spot
+# Secrets / config
 *.env
-*.csv
-/__pycache__
-*.zip
+
+# Python
+__pycache__/
 *.pyc
+.ipynb_checkpoints/
+
+# Data files
+*.csv
+*.zip
 *.gz
 *.npz
-__pycache__/
+
+# Downloaded market data
+binance_data/
+spot/
