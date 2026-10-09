@@ -7,7 +7,7 @@ Bộ sưu tập script và notebook Python cho nghiên cứu giao dịch định
 | Thư mục | Nội dung |
 |---|---|
 | `data/` | Tải dữ liệu lịch sử Binance (đa luồng), websocket, lưu vào MySQL |
-| `strategies/` | Chiến lược: BB+RSI, mean reversion, multi-timeframe RSI, VWAP, Breakout Retest (`indicators.py`, `binance_data_handle.py` là helper dùng chung) |
+| `need-review/` | Chiến lược chờ review/backtest lại, mỗi chiến lược một thư mục: `bb_rsi` (Bollinger + RSI, kèm helper), `vwap_ma_crossover` (giao cắt MVWAP), `breakout_retest` (breakout + retest 4H) |
 | `portfolio/` | Tối ưu danh mục (rolling), HMM + Fama-French multifactor, notebook Crypto Portfolio Optimization |
 | `ml-trainning/` | Thử nghiệm ML: market vision, naive model, Calmar ratio |
 | `LASSO-model/` | Mô hình LASSO với dữ liệu BingX/MySQL |
