@@ -1,0 +1,232 @@
+{
+  "name": " the Pullback Scalp Bot",
+  "chat_id": null,
+  "source": [
+    "binance_future"
+  ],
+  "symbols": [
+    "OG-USDT"
+  ],
+  "type": 1,
+  "rule": [
+    {
+      "status": 1,
+      "order_type": "market",
+      "alpha": 0.999,
+      "operator": "and",
+      "position": "long",
+      "bot_sl": 50,
+      "bot_tp": 100,
+      "leverage": 20,
+      "order_size": 10,
+      "rules": [
+        {
+          "group_operator": "and",
+          "group_index": 0,
+          "rule_index": 0,
+          "operator": "and",
+          "comparison_operator": ">",
+          "coefficient": 1,
+          "add": 0,
+          "indicator_1": {
+            "name": "MA",
+            "group": "MA",
+            "interval": "1h",
+            "parameters": {
+              "timeperiod": "50",
+              "ncandle": "0"
+            }
+          },
+          "indicator_2": {
+            "name": "MA",
+            "group": "MA",
+            "interval": "1h",
+            "parameters": {
+              "timeperiod": "100",
+              "ncandle": "0"
+            }
+          }
+        },
+        {
+          "group_operator": "and",
+          "group_index": 1,
+          "rule_index": 0,
+          "operator": "and",
+          "comparison_operator": ">",
+          "coefficient": 1,
+          "add": 0,
+          "indicator_1": {
+            "name": "RSI",
+            "group": "RSI",
+            "interval": "1h",
+            "parameters": {
+              "ncandle": -1,
+              "timeperiod": 14
+            }
+          },
+          "indicator_2": {
+            "name": "Value",
+            "group": "Value",
+            "interval": "1h",
+            "parameters": {
+              "value": "50"
+            }
+          }
+        },
+        {
+          "group_operator": "and",
+          "group_index": 2,
+          "rule_index": 0,
+          "operator": "and",
+          "comparison_operator": "<",
+          "coefficient": 1,
+          "add": 0,
+          "indicator_1": {
+            "name": "close",
+            "group": "Candle",
+            "interval": "1h",
+            "parameters": {
+              "ncandle": -1
+            }
+          },
+          "indicator_2": {
+            "name": "MA",
+            "group": "MA",
+            "interval": "1h",
+            "parameters": {
+              "timeperiod": "9",
+              "ncandle": "0"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "parameters": {
+            "take_profit_rules": {
+              "operator": "or",
+              "order_type": "market",
+              "alpha": 1,
+              "rules": [
+                {
+                  "operator": "and",
+                  "rules": [
+                    {
+                      "add": 0,
+                      "coefficient": 1,
+                      "indi1": {
+                        "name": "RSI",
+                        "group": "RSI",
+                        "interval": "1h",
+                        "parameters": {
+                          "ncandle": 0,
+                          "timeperiod": 14
+                        }
+                      },
+                      "indi2": {
+                        "name": "Value",
+                        "group": "Value",
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "70"
+                        }
+                      },
+                      "operator": ">=",
+                      "indicator1": {
+                        "indicator": {
+                          "group": "RSI",
+                          "label": "RSI",
+                          "value": "RSI"
+                        },
+                        "parameters": {
+                          "ncandle": 0,
+                          "timeperiod": 14
+                        },
+                        "interval": "1h"
+                      },
+                      "indicator2": {
+                        "indicator": {
+                          "id": 84,
+                          "group": "Value",
+                          "group_display": "Value",
+                          "label": "Value",
+                          "value": "Value",
+                          "groupBy": "Price"
+                        },
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "70"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "stop_loss_rules": {
+              "operator": "or",
+              "order_type": "market",
+              "alpha": 1,
+              "rules": [
+                {
+                  "operator": "and",
+                  "rules": [
+                    {
+                      "add": 0,
+                      "coefficient": 1,
+                      "indi1": {
+                        "name": "RSI",
+                        "group": "RSI",
+                        "interval": "1h",
+                        "parameters": {
+                          "ncandle": 0,
+                          "timeperiod": 14
+                        }
+                      },
+                      "indi2": {
+                        "name": "Value",
+                        "group": "Value",
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "30"
+                        }
+                      },
+                      "operator": "<=",
+                      "indicator1": {
+                        "indicator": {
+                          "group": "RSI",
+                          "label": "RSI",
+                          "value": "RSI"
+                        },
+                        "parameters": {
+                          "ncandle": 0,
+                          "timeperiod": 14
+                        },
+                        "interval": "1h"
+                      },
+                      "indicator2": {
+                        "indicator": {
+                          "id": 84,
+                          "group": "Value",
+                          "group_display": "Value",
+                          "label": "Value",
+                          "value": "Value",
+                          "groupBy": "Price"
+                        },
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "30"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "name": "real_trade"
+        }
+      ]
+    }
+  ]
+}
