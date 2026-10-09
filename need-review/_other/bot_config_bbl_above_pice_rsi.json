@@ -1,0 +1,264 @@
+{
+  "name": "BBL above pice&RSI",
+  "chat_id": null,
+  "source": [
+    "binance_future"
+  ],
+  "symbols": [
+    "OG-USDT"
+  ],
+  "type": 1,
+  "rule": [
+    {
+      "status": 1,
+      "order_type": "market",
+      "alpha": 1.001,
+      "operator": "and",
+      "position": "long",
+      "bot_sl": 50,
+      "bot_tp": 100,
+      "leverage": 20,
+      "order_size": 10,
+      "rules": [
+        {
+          "group_operator": "and",
+          "group_index": 0,
+          "rule_index": 0,
+          "operator": "or",
+          "comparison_operator": ">",
+          "coefficient": 1,
+          "add": 0,
+          "indicator_1": {
+            "name": "close",
+            "group": "Candle",
+            "interval": "1h",
+            "parameters": {
+              "ncandle": -1
+            }
+          },
+          "indicator_2": {
+            "name": "upper_band",
+            "group": "DC",
+            "interval": "1h",
+            "parameters": {
+              "timeperiod": "20",
+              "ncandle": "0"
+            }
+          }
+        },
+        {
+          "group_operator": "and",
+          "group_index": 1,
+          "rule_index": 0,
+          "operator": "<",
+          "comparison_operator": "<",
+          "coefficient": 1,
+          "add": 0,
+          "indicator_1": {
+            "name": "RSI",
+            "group": "RSI",
+            "interval": "1h",
+            "parameters": {
+              "ncandle": -1,
+              "timeperiod": 14
+            }
+          },
+          "indicator_2": {
+            "name": "Value",
+            "group": "Value",
+            "interval": "1h",
+            "parameters": {
+              "value": "70"
+            }
+          }
+        }
+      ],
+      "actions": [
+        {
+          "parameters": {
+            "take_profit_rules": {
+              "operator": "or",
+              "order_type": "market",
+              "alpha": 1,
+              "rules": [
+                {
+                  "operator": "and",
+                  "rules": [
+                    {
+                      "add": 0,
+                      "coefficient": 1,
+                      "indi1": {
+                        "name": "RSI",
+                        "group": "RSI",
+                        "interval": "1h",
+                        "parameters": {
+                          "ncandle": 0,
+                          "timeperiod": 14
+                        }
+                      },
+                      "indi2": {
+                        "name": "Value",
+                        "group": "Value",
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "30"
+                        }
+                      },
+                      "operator": "<=",
+                      "indicator1": {
+                        "indicator": {
+                          "group": "RSI",
+                          "label": "RSI",
+                          "value": "RSI"
+                        },
+                        "parameters": {
+                          "ncandle": 0,
+                          "timeperiod": 14
+                        },
+                        "interval": "1h"
+                      },
+                      "indicator2": {
+                        "indicator": {
+                          "id": 84,
+                          "group": "Value",
+                          "group_display": "Value",
+                          "label": "Value",
+                          "value": "Value",
+                          "groupBy": "Price"
+                        },
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "30"
+                        }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "operator": "and",
+                  "rules": [
+                    {
+                      "indicator1": {
+                        "indicator": {
+                          "id": 88,
+                          "group": "Candle",
+                          "group_display": "Candle",
+                          "label": "close",
+                          "value": "close",
+                          "groupBy": "Price"
+                        },
+                        "interval": "1h",
+                        "parameters": {
+                          "ncandle": "-1"
+                        }
+                      },
+                      "operator": "<",
+                      "coefficient": 1,
+                      "add": 0,
+                      "indicator2": {
+                        "indicator": {
+                          "id": 153,
+                          "group": "DC",
+                          "group_display": "Donchian Channels - DC",
+                          "label": "lower_band",
+                          "value": "lower_band",
+                          "groupBy": "OnChart"
+                        },
+                        "interval": "1h",
+                        "parameters": {
+                          "timeperiod": "20",
+                          "ncandle": "0"
+                        }
+                      },
+                      "indi1": {
+                        "name": "close",
+                        "group": "Candle",
+                        "interval": "1h",
+                        "parameters": {
+                          "ncandle": "-1"
+                        }
+                      },
+                      "indi2": {
+                        "name": "lower_band",
+                        "group": "DC",
+                        "interval": "1h",
+                        "parameters": {
+                          "timeperiod": "20",
+                          "ncandle": "0"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            "stop_loss_rules": {
+              "operator": "or",
+              "order_type": "market",
+              "alpha": 1,
+              "rules": [
+                {
+                  "operator": "and",
+                  "rules": [
+                    {
+                      "indicator1": {
+                        "indicator": {
+                          "id": 94,
+                          "group": "RSI",
+                          "group_display": "RSI",
+                          "label": "RSI",
+                          "value": "RSI",
+                          "groupBy": "Oscillator"
+                        },
+                        "interval": "1h",
+                        "parameters": {
+                          "timeperiod": "14",
+                          "ncandle": "0"
+                        }
+                      },
+                      "operator": ">=",
+                      "coefficient": 1,
+                      "add": 0,
+                      "indicator2": {
+                        "indicator": {
+                          "id": 84,
+                          "group": "Value",
+                          "group_display": "Value",
+                          "label": "Value",
+                          "value": "Value",
+                          "groupBy": "Price"
+                        },
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "73"
+                        }
+                      },
+                      "indi1": {
+                        "name": "RSI",
+                        "group": "RSI",
+                        "interval": "1h",
+                        "parameters": {
+                          "timeperiod": "14",
+                          "ncandle": "0"
+                        }
+                      },
+                      "indi2": {
+                        "name": "Value",
+                        "group": "Value",
+                        "interval": "1h",
+                        "parameters": {
+                          "value": "73"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "name": "real_trade"
+        }
+      ]
+    }
+  ]
+}
