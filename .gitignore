@@ -15,6 +15,7 @@ __pycache__/
 # Downloaded market data
 binance_data/
 spot/
+bitget_data/
 
 # Dự án con (repo riêng)
 portfolio/Binance-portfolio-rebalance/
